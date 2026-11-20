@@ -379,6 +379,51 @@ console.log('\n[10] a config edit is detectable without re-parsing')
   check('and it is stable', missing.configStamp() === missing.configStamp(), missing.configStamp())
 }
 
+console.log('\n[11] enabled is a listing field, and the store can flip it')
+{
+  // The panel filters the workspace-creation picker by this flag. It has to
+  // reach the ROW: the client never reads the store file.
+  const { store, dir } = storeWith({
+    configText: 'Host gamma\n  HostName g.example\n',
+    entries: [
+      { alias: 'alpha', host: 'a.example', user: 'dev', auth: { kind: 'agent' } },
+      { alias: 'beta', host: 'b.example', user: 'dev', auth: { kind: 'agent' }, enabled: false },
+    ],
+  })
+  track(dir)
+  const rows = store.listing().rows
+  check('a store entry without the flag is enabled',
+    rows.find(row => row.alias === 'alpha')?.enabled === true,
+    JSON.stringify(rows.find(row => row.alias === 'alpha')))
+  check('a store entry with enabled:false is disabled',
+    rows.find(row => row.alias === 'beta')?.enabled === false,
+    JSON.stringify(rows.find(row => row.alias === 'beta')))
+  check('an ssh-config host is always enabled (nowhere to store a flag)',
+    rows.find(row => row.alias === 'gamma')?.enabled === true,
+    JSON.stringify(rows.find(row => row.alias === 'gamma')))
+}
+
+{
+  const { HostConfigStore } = await import(pathToFileURL(path.join(pluginRoot, 'lib/store.js')).href)
+  const dir = mkdtempSync(path.join(tmpdir(), 'dsh-hosts-toggle-'))
+  track(dir)
+  const store = new HostConfigStore(path.join(dir, 'dsh-ssh.json'))
+  store.create({ alias: 'alpha', host: 'a.example', user: 'dev', auth: { kind: 'agent' } })
+  store.setEnabled('alpha', false)
+  check('setEnabled(false) persists a disabled entry',
+    store.load().find(entry => entry.alias === 'alpha')?.enabled === false,
+    JSON.stringify(store.load().find(entry => entry.alias === 'alpha')))
+  check('...and the other fields survive the flip',
+    store.load().find(entry => entry.alias === 'alpha')?.host === 'a.example')
+  store.setEnabled('alpha', true)
+  check('setEnabled(true) removes the field instead of writing true',
+    store.load().find(entry => entry.alias === 'alpha')?.enabled === undefined,
+    JSON.stringify(store.load().find(entry => entry.alias === 'alpha')))
+  let refused = false
+  try { store.setEnabled('nope', false) } catch { refused = true }
+  check('an alias outside the store is refused, never invented', refused)
+}
+
 for (const cleanup of cleanups) cleanup()
 
 console.log(`\n=== ${passed} passed, ${failures} failed ===`)

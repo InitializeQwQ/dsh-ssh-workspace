@@ -32,6 +32,19 @@
 "not lossless JSON" 并拒绝调用。`description` 缺席与「用户没写描述」在语义上相同，所以缺席
 是更诚实的编码。
 
+另有两个并列的「没列出来的条目」字段，它们的含义不同，不合并：
+
+| 字段 | 说明 |
+| --- | --- |
+| `skipped[]` | 配了但**无法使用**（如 `ProxyCommand`），每项是原因文本 |
+| `storeError` | 主机存储整个读不出来（"没有主机"与"看不见主机"必须可分） |
+| `ignored[]` | `~/.ssh/config` 里**不是候选**的块：公开 Git 服务（`github.com` 等）或 `git` 账号——它们能连但没有 shell。每项形如 `alias: 原因` |
+
+`ignored` 之所以不并进 `skipped`：前者不是故障（克隆 GitHub 的用户不该看到"需要处理"），
+后者会计入诊断报告的状态判定。被忽略的别名仍可 `ssh_workspace_mount` / `ssh_workspace_exec`
+显式使用，过滤只影响发现。判定规则与逃生开关见
+[hosts.md](./hosts.md#哪些-ssh-config-条目不会被导入)。
+
 ## ssh_workspace_mount
 
 把远端目录挂载为工作区。挂载前会先 `stat` 验证目录**真实存在且是目录**，

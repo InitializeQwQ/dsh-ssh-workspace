@@ -63,6 +63,7 @@ const SUITES = [
   'replay',
   'host-key',
   'host-listing',
+  'git-endpoint',
   'ssh-config',
   'config-audit',
   'scratch-safety',

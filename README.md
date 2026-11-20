@@ -149,7 +149,11 @@ npm ci          # ssh2 是直接依赖，不随 clone 到位
 「远程工作区」面板里可以直接**添加 / 编辑 / 删除**主机，写回
 `$DSH_HOME/dsh-ssh.json`（原子写入，保留文件里本插件不认识的字段）。
 `~/.ssh/config` 中的主机是**只读回退**，面板不会修改那个文件；
-与存储同名的主机以存储为准。密码 / 私钥口令**加密保存**在 `dsh-ssh.json` 的
+与存储同名的主机以存储为准。`~/.ssh/config` 里**不是机器**的块不会被当成主机：
+`github.com` 这类公开 Git 服务，以及任何以 `git` 账号认证的块——它们能连上，但只提供
+git、没有可登录的 shell，当不了远程工作区。这类条目会被列表略过并在下方说明原因
+（不算故障，也不会点亮状态灯），显式点名（挂载 / 执行）仍然可用；
+`DSH_SSH_WORKSPACE_SHOW_GIT_HOSTS=1` 可以整体关掉这条过滤。密码 / 私钥口令**加密保存**在 `dsh-ssh.json` 的
 `secrets` 段（AES-256-GCM，密钥是 `$DSH_HOME/dsh-ssh.key`，仅本用户可读），
 且不会回传到浏览器，编辑时留空表示保持原值。
 删除主机不会自动卸载已挂载的工作区，但那些工作区会因主机不存在而无法访问。
@@ -307,7 +311,7 @@ localPassthrough:
 | 「添加工作区」远程入口 | 「添加工作区」按钮替换为锚定菜单，两步完成：「新建本地工作区」/「新建远程工作区」二选一，再走各自流程。本地直接渲染**已安装的 browse 面板本身**（同一个组件、同一套 locale 与列目录调用；没有应用内浏览器的部署回落到 `pickDirectory()`）；远程是「选主机 → 逐级浏览远端目录 → 确认挂载」（目录不可写时警告并拒绝创建）；路径栏**边打边跟**，不用先回车试路径（同目录内零往返收窄、跨目录在 200 ms 停顿后列一次、拼全的目录名只收窄成一行，进入要尾斜杠 / 回车 / 双击） |
 | 「变更请求」tab 的最近提交历史 | 官方 Forge 面板的下半部分追加一条只读的最近提交条（同一个 tab，不新增页签）：插件按官方 tab 的 key 遮蔽该槽位，上半仍渲染官方组件、下半渲染自建历史区块；宿主新增只读路由 `GET /api/dsh-ssh-workspace/git-history`，只接受会话自己的工作目录，用固定 argv 的 `git log` 取数。**点标题行即整体折叠**，收起时只剩「最近提交历史」一行，折叠状态记在页面 `localStorage` 里（重开 tab / 刷新 / 重启宿主后保持）；官方面板的文案座位取自官方条目自己的命名空间（此前误绑包 id，上半会显示 i18n key）。**面板自身的 git 测量在远端工作区也可用**：`workspace-write` / `read-only` 下 `ctx.sandbox.confine()` 的 windows-acl 包装以桌面可执行文件为前置（不是 `node`），远端桥现在按与 `process.execPath` 同身份识别并剥掉它，否则整块会报 `cannot run "…DeepSeek Harness.exe" with a remote cwd`。详见 [commit-history.md](docs/commit-history.md) |
 | 远程工作区专用标记 | 本插件创建的远程工作区在侧栏行、工作区选择器与会话页工作区按钮处显示远端标记图标，而不是普通文件夹图标 |
-| 主机管理面板 | 添加 / 编辑 / 删除主机（私钥路径、认证方式、备注等），改动立即生效并丢弃该别名旧连接；`~/.ssh/config` 主机只读展示；「测试连接」只探测可达性（连上即释放，不会留下连接），结果以顶部 toast 弹出，7 秒自动消失（点击 / Esc 可提前关闭，悬停暂停）；错误可就地展开诊断码与原始错误、复制整段诊断，测试连接可安全重放所以带「重试」；「已连接」状态内联在主机名后，断开时连带拆除该主机的端口转发 |
+| 主机管理面板 | 添加 / 编辑 / 删除主机（私钥路径、认证方式、备注等），改动立即生效并丢弃该别名旧连接；每台存储型主机可单独**启用 / 停用**（停用的主机置灰，且不出现在「新建远程工作区」的主机列表里；`~/.ssh/config` 主机无此开关）；`~/.ssh/config` 主机只读展示；「测试连接」只探测可达性（连上即释放，不会留下连接），结果以顶部 toast 弹出，7 秒自动消失（点击 / Esc 可提前关闭，悬停暂停）；错误可就地展开诊断码与原始错误、复制整段诊断，测试连接可安全重放所以带「重试」；「已连接」状态内联在主机名后，断开时连带拆除该主机的端口转发 |
 | 浏览目录对话框 | 主机卡片的「浏览目录」逐级浏览远端目录，并可就地「挂载此目录」；列表**目录在前、文件在后**（文件行只作上下文，不能进入），路径栏与「新建远程工作区」用同一套**边打边跟**行为（`usePathDraftPreview`），挂载目标永远是列表所示目录；列目录是一次合并的远端 `ls`（上限在远端截断，几万项的 `/tmp` 也能立刻列出）。**只浏览 / 挂载**，不提供上传、下载或内联队列（传输入口在文件树行菜单与文件面板头部） |
 | 行菜单：新建文件夹 / 重命名 / 删除 | 宿主文件树行菜单提供重命名与删除：远端行与**本地行**都可重命名（只改名、不换目录）与删除（目录连同子目录、需确认）；目标已存在时拒绝；失败保持原样；F2 / Delete 触发同一动作。**远端目录行**另有「新建文件夹」，走 `POST /mkdir`（父目录 + 单个路径段名称，越界 / 只读 / 停用 / 重名在写盘前拒绝）；成功后重新列目录并选中新行。本地目录行的这一项不提供——本地新建走空白处菜单（见下一行），两条入口不重复。行菜单收窄为 220px 单行、最多 8 项、最多三组分隔线（「加入任务」｜「传输/复制」｜「下载到本机」｜「新建文件夹 / 重命名/删除」）。菜单文案固定、不带数字：删除永远是「删除」，下载永远是「下载到本机」；选几行由 `resolveTargets` 判决，数量写在删除确认框与下载目标对话框里 |
 | 文件树空白处右键（本地工作区） | 在本地工作区「文件」树的空白处右键，弹出恰好两项的菜单：「新建文件夹」与「复制路径」。目标目录是**空白处所属的那一个**——落在某个已展开目录的子列表里就是这个目录，否则是树根；两者都必须在该树根之内。新建走同一个 `POST /mkdir` 的本地分支（单个路径段名称，越界 / 只读 / 重名在写盘前拒绝），成功后重新列目录并选中新行；「复制路径」始终可用，只读会话只禁用新建。远端工作区保留原来的空白处菜单，不混用。 |
@@ -398,7 +402,7 @@ exec 通道；空闲 30 分钟回收（有操作在飞的连接不回收）。
 | [features.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/features.md) | **功能说明**：按能力域列出的完整功能清单（工作区 / 文件 / 执行 / 传输 / 转发 / 界面 / 安全 / 配置 / 降级矩阵 / 边界） |
 | [architecture.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/architecture.md) | 架构与实现：`ctx.fs` / `ctx.shell` / `ctx.subprocess` 接管、变更监视与流式读取、内建桥接、引擎与连接模型 |
 | [protocol.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/protocol.md) | `ssh://` 路径协议：语法、规范化、显示规则、`file:` URI、写入围栏与停用围栏 |
-| [hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md) | 主机配置与认证：存储格式、`~/.ssh/config` 回退、面板管理 |
+| [hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md) | 主机配置与认证：存储格式、`~/.ssh/config` 回退（含「只导入能登录的服务器」）、面板管理 |
 | [tools.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/tools.md) | Agent 工具参考：11 个 `ssh_workspace_*` 工具（含 `reverse_forward`） |
 | [ui.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/ui.md) | 界面指南：面板、添加工作区双入口、远程工作区标记、端口转发与持久会话区、文件引用设置 |
 | [forward-persistence.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/forward-persistence.md) | 端口转发持久化：意图与事实的分离、两条断开路径的一致性、自动开启 |

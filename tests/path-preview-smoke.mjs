@@ -326,7 +326,7 @@ function makeDialog ({ name, props }) {
     refreshRemoteWorkspaceMarks: () => {},
     fetchJson: async (url, init) => {
       if (init?.method === 'POST') return { ok: true, workspacePath: 'ssh://box/home/me' }
-      if (url.endsWith('/hosts')) return { hosts: [{ alias: 'box' }, { alias: 'other' }] }
+      if (url.endsWith('/hosts')) return { hosts: [{ alias: 'box' }, { alias: 'other' }, { alias: 'box2', enabled: false }] }
       requests.push(url)
       const match = /[?&]path=([^&]*)/u.exec(url)
       const target = match === null ? '/home/me' : decodeURIComponent(match[1])
@@ -703,6 +703,9 @@ console.log('[the dialogs]')
     dialog.rows().join() === 'Documents,projects', dialog.rows().join())
   check('...with creation allowed on a writable directory',
     dialog.mountButton()?.props.disabled === false, String(dialog.mountButton()?.props.disabled))
+  const options = (dialog.find((node) => node.type === 'select')?.props.children ?? []).map(option => option.props.value)
+  check('the host picker offers enabled hosts only',
+    options.includes('box') && options.includes('other') && !options.includes('box2'), options.join())
 
   dialog.setDraft('/home/me/pro')
   check('it narrows rows exactly like the browser dialog', dialog.rows().join() === 'projects', dialog.rows().join())

@@ -601,7 +601,7 @@ console.log('\n[a11y: the menu contract]')
 {
   const source = readFileSync(path.join(packageRoot, clientRel), 'utf8')
   check('the panel keeps the listing gaps from the hosts response',
-    /setListingGaps\(\{ skipped: hostsData\.skipped \?\? \[\], storeError: hostsData\.storeError \}\)/u.test(source),
+    /setListingGaps\(\{ skipped: hostsData\.skipped \?\? \[\], ignored: hostsData\.ignored \?\? \[\], storeError: hostsData\.storeError \}\)/u.test(source),
     'the response gaps are dropped')
   check('an unreadable store gets its own sentence, not the empty-state one',
     /listingGaps\.storeError !== undefined \? t\('panel\.storeError'\) : t\('panel\.empty'\)/u.test(source),
@@ -611,6 +611,15 @@ console.log('\n[a11y: the menu contract]')
   check('skipped entries are counted in the panel',
     /t\('panel\.skipped'\)\.replace\('\{n\}', String\(listingGaps\.skipped\.length\)\)/u.test(source),
     'skipped entries invisible')
+  // Git transport bindings are a THIRD outcome: not listed, not broken. They
+  // must be counted on screen as well, or "my github block vanished" has no
+  // answer anywhere the user can see.
+  check('Git-only entries that were left out are counted too',
+    /t\('panel\.ignored'\)\.replace\('\{n\}', String\(listingGaps\.ignored\.length\)\)/u.test(source),
+    'ignored entries invisible')
+  check('the Git-only note is rendered at both listing sites',
+    (source.match(/listingGaps\.ignored\.length > 0 &&/gu) ?? []).length === 2,
+    `${(source.match(/listingGaps\.ignored\.length > 0 &&/gu) ?? []).length} render site(s)`)
   // Gaps must survive a PARTIAL listing too: a host that exists but cannot be
   // used is exactly the one the user is looking for, and it used to disappear
   // because the rows that did load rendered over it.

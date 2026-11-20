@@ -65,7 +65,11 @@ if (!cardSource.startsWith('function HostCard') || !cardSource.endsWith('}')) {
  * @param {object} [overrides] - host / props overrides.
  * @returns {object} the element tree the card returned.
  */
+/** Aliases the last rendered card asked to toggle. */
+let toggleCalls = []
+
 function renderCard (conn, overrides = {}) {
+  toggleCalls = []
   const host = {
     alias: 'alpha',
     user: 'deploy',
@@ -96,6 +100,8 @@ function renderCard (conn, overrides = {}) {
     host,
     t,
     conn,
+    onToggle: (alias) => { toggleCalls.push(alias) },
+    toggling: overrides.toggling === true,
     onTest: () => {},
     onBrowse: () => {},
     onEdit: () => {},
@@ -213,6 +219,34 @@ check('a retry that carries an error prints it',
 // `status.connections` at all — the record it builds defaults to `broken`.
 check('a synthesised record (retry-only) is treated as not connected',
   actionKeyed(renderCard(retryRow('waiting')), 'disconnect') === undefined)
+
+// ---- the enable switch -------------------------------------------------------
+
+const switchOf = (tree) => actionKeyed(tree, 'toggle')
+const storeSwitch = switchOf(neverConnected)
+check('a stored host carries an enable switch', storeSwitch !== undefined)
+check('...announced as a switch, not a checkbox',
+  storeSwitch?.props.role === 'switch' && storeSwitch?.props['aria-checked'] === true)
+check('...drawn in the on state',
+  (storeSwitch?.props.className ?? '').includes('sshwsp-switch-on'))
+storeSwitch?.props.onClick()
+check('...and clicking it asks the panel to toggle this alias',
+  toggleCalls.join() === 'alpha', toggleCalls.join())
+
+const disabledCard = renderCard(undefined, { host: { enabled: false } })
+const disabledSwitch = switchOf(disabledCard)
+check('a disabled host\'s switch is off and says so',
+  disabledSwitch?.props['aria-checked'] === false &&
+    !(disabledSwitch?.props.className ?? '').includes('sshwsp-switch-on') &&
+    disabledSwitch?.props.title === 'hosts.toggleDisabled')
+check('...the card itself is dimmed', disabledCard.props.className.includes('sshwsp-host-disabled'))
+
+const busyToggle = renderCard(undefined, { toggling: true })
+check('the switch is disabled while the change is in flight',
+  switchOf(busyToggle)?.props.disabled === true)
+
+const configSwitch = switchOf(renderCard(connected, { host: { source: 'ssh-config' } }))
+check('an ssh-config host gets no switch (nowhere to store the flag)', configSwitch === undefined)
 
 const sshConfigCard = renderCard(connected, { host: { source: 'ssh-config' } })
 check('an ssh-config host hides edit and delete, but keeps disconnect',

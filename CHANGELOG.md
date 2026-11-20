@@ -2,6 +2,34 @@
 
 本文件记录 dsh-ssh-workspace 的版本变更。0.1.16 之前的版本为未公开的本地迭代，未收录。
 
+## [0.3.11] - 2026-11-20
+
+### 新增
+
+- **只把能登录的服务器当主机**：`~/.ssh/config` 是所有 SSH 客户端共用的，里面最常见的一块往往不是机器——`Host github.com` 这类块的全部作用是为 `git push` 绑定密钥（或改用 443 端口）。它合法、能连上，但 GitHub 只接受 `git` 账号、永远不给 shell，于是面板、主机下拉和 `ssh_workspace_hosts` 里多出一行行死路。现在**主机发现**跳过两类块：目标是公开 Git 服务（`github.com` 含 `ssh.github.com` / `gist.github.com`、`gitlab.com`、`bitbucket.org`、`codeberg.org`、`gitee.com`、`git.sr.ht` / `hg.sr.ht`、`ssh.dev.azure.com` / `vs-ssh.visualstudio.com`，以及 `git-codecommit.<region>.amazonaws.com` 这一形状，按**域名边界**匹配，`notgithub.com` 不算），或以 `git` 账号认证。判定读的是**解析后的** host / user，所以 `Host gh` + `HostName github.com` 同样命中。
+- **只过滤发现，不拒绝使用**：`resolve()` 照旧解析被略过的别名，显式点名（挂载 / 执行 / 测试连接）仍然可用；在面板里手动添加的**存储条目**不受过滤——那是明确的意图。
+- **不静默消失，也不点红状态灯**：这类条目落在新的 `ignored` 字段（`{ alias, reason }`），**不并进** `skipped`——「不是候选」不是故障，克隆 GitHub 的用户不该因为一条 Git 配置就看到「需要处理」；`skipped` 仍照旧进诊断报告的状态判定。面板在主机列表下方用一行说明报出数量与出处，`ssh_workspace_hosts` 也返回 `ignored[]`（每项形如 `alias: 原因`）。
+- **逃生开关**：`DSH_SSH_WORKSPACE_SHOW_GIT_HOSTS=1` 整体关掉过滤（宿主启动时读取，改完需重启），用于构建账号真的叫 `git`、或自建 Gitea 以 `git@` 登录之类的情况。
+
+### 测试
+
+- 新增 `git-endpoint-smoke` 62：判定本身（域名边界——`ssh.github.com` / `altssh.gitlab.com` 命中，而 `notgithub.com` / `github.com.example.org` / `git.example.com` / `my.gitee.company.com` 不命中，因为**藏掉真机器是这个功能唯一不能有的失败**；`git-codecommit.<region>.amazonaws.com` 用形状而不是后缀；大小写与尾点归一；`git` 大小写敏感、`Git` 不算）、`listing()` 的三分（列出 / `skipped` / `ignored`，且 `ignored` 不参与状态判定）、`resolve()` 仍解析被忽略的别名、存储条目豁免、环境变量开关，以及路由与工具把 `ignored` 送出（输出 schema 声明 + 返回值 + 渲染 notes）——否则「为什么 github 不见了」在界面上没有任何答案。
+- `client-shape-smoke` 337 → 339：面板取 `ignored`，并在「列表为空」与「有列表行」两个位置各渲染一行说明。
+
+## [0.3.10] - 2026-11-20
+
+### 新增
+
+- **每台主机可以单独启用 / 停用**：「远程工作区」面板每张存储型主机卡片的左侧新增开关（`role="switch"`）；停用的卡片置灰，并从「新建远程工作区」的主机下拉里消失——只列启用的主机，一台都没启用时提示先回面板启用。`~/.ssh/config` 主机是只读回退、没有地方保存标记，因此没有开关（始终视为启用）。开关只影响**创建新工作区时的选择**：已挂载工作区、现有连接，以及测试 / 浏览 / 断开 / 编辑都不受影响。
+- **状态存在主机记录上**：新增 `POST /api/dsh-ssh-workspace/hosts/toggle`，只翻转 `dsh-ssh.json` 里的一个布尔值（停用写 `enabled: false`，启用时删掉该字段，老记录保持原样），不碰认证、不需要整张表单——这也是它不复用 `/hosts/save` 的原因。
+
+### 测试
+
+- `host-card-smoke` 25 → 33：存储型主机有开关（`role=switch`、`aria-checked`、开/关类名、点击回调），停用卡片带 `sshwsp-host-disabled`，在途时禁用，ssh-config 主机没有开关。
+- `host-listing-smoke` 52 → 59：列表行带 `enabled`（缺省为真、`false` 为停用、ssh-config 恒为真）；真实 `HostConfigStore` 的 `setEnabled` 往返（false 落盘、true 删字段、不可编辑别名被拒）。
+- `routes-smoke` 290：开关路由的 200 / 非布尔 / 缺别名 / 不在存储里的别名。
+- `path-preview-smoke` 74 → 75：真渲染的「新建远程工作区」下拉只列启用的主机。
+
 ## [0.3.9] - 2026-11-20
 
 ### 新增

@@ -2051,6 +2051,39 @@ async function postChunk (route, body, chunks = []) {
         JSON.stringify(rows.find(row => row.alias === 'alpha')?.tags))
     }
 
+    // Enabling / disabling a host is its own one-boolean route: the save route
+    // needs a complete form, and a switch must not fail because a field the
+    // form never touched became required.
+    {
+      const toggle = async (body) => {
+        const { res, state } = fakeRes()
+        await findRoute(ROUTES.hostToggle).handler(fakeReq({
+          method: 'POST',
+          headers: { host: 'localhost:4074', 'content-type': 'application/json' },
+          body,
+        }), res)
+        return state
+      }
+      const off = await toggle({ alias: 'alpha', enabled: false })
+      check('a stored host can be switched off', off.status === 200 && JSON.parse(off.body).ok === true,
+        `${off.status} ${off.body}`)
+      check('...and the store records it as disabled',
+        contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')?.enabled === false,
+        JSON.stringify(contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')))
+      const on = await toggle({ alias: 'alpha', enabled: true })
+      check('...and switched back on, removing the field rather than writing true',
+        on.status === 200 &&
+          contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')?.enabled === undefined,
+        JSON.stringify(contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')))
+      const missing = await toggle({ alias: 'nope', enabled: false })
+      check('an alias that is not in the store is refused, not silently created',
+        missing.status === 400, `${missing.status} ${missing.body}`)
+      const bad = await toggle({ alias: 'alpha', enabled: 'no' })
+      check('a non-boolean state is refused', bad.status === 400, `${bad.status} ${bad.body}`)
+      const noAlias = await toggle({ enabled: false })
+      check('a missing alias is refused', noAlias.status === 400, `${noAlias.status} ${noAlias.body}`)
+    }
+
     // A transport failure is not the caller's fault: 502.
     {
       const { res, state } = fakeRes()

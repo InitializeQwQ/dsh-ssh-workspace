@@ -56,6 +56,42 @@ agent 认证自带的 `agentPath`）：key / password 认证的主机勾选后�
 `yes` 才算开启，其余一律关闭）。`Include` / `Match` / 通配符块会被跳过而不是
 猜着解析——目标是「够用的回退」，不是完整解析器。
 
+## 哪些 ssh-config 条目不会被导入
+
+`~/.ssh/config` 是所有 SSH 客户端共用的，里面最常见的一块往往**不是一台机器**：
+`Host github.com` 这种块的全部作用是为 `git push` 绑定一把密钥（或换成 443 端口）。
+它合法、也能连上，但**永远开不了工作区**——GitHub 只接受 `git` 账号，不会给 shell。
+把它们当成候选导入，等于在面板、主机下拉和 `ssh_workspace_hosts` 里塞进一行行死路。
+
+所以**主机发现**会跳过两类块（判定基于**解析后的**目标，不是别名本身，
+因此 `Host gh` + `HostName github.com` 同样命中）：
+
+| 信号 | 说明 |
+| --- | --- |
+| 目标是公开 Git 服务 | 主机名（`HostName`，缺省时是别名）落在已知后缀上：`github.com`（含 `ssh.github.com` / `gist.github.com`）、`gitlab.com`、`bitbucket.org`、`codeberg.org`、`gitee.com`、`git.sr.ht` / `hg.sr.ht`、`ssh.dev.azure.com` / `vs-ssh.visualstudio.com`，以及 `git-codecommit.<region>.amazonaws.com` 这一形状；按**域名边界**匹配（`notgithub.com` 不算） |
+| 以 `git` 账号认证 | 用户名恰好是 `git`（大小写敏感）。这是 Git 服务的约定账号，后面没有登录 shell；自建 Gitea / Gogs 常是 `git@git.example.com` |
+
+这是**发现层**的过滤，不是拒绝：
+
+- 结果分成三种而不是两种——**列出**、`skipped`（配了但无法使用，如 `ProxyCommand`）、
+  `ignored`（**不是候选**，即上表两类）。`ignored` 不会把状态灯点红：克隆 GitHub 的
+  用户不该因为一条 Git 配置就看到「需要处理」；
+- 面板在主机列表下方以一行说明报出 `ignored` 的数量与原因，工具
+  `ssh_workspace_hosts` 同样返回 `ignored[]`（形如 `alias: 原因`），不会静默消失；
+- `resolve()` 照旧解析被忽略的别名，所以显式点名（挂载 / 执行 / 测试连接）仍然可用；
+  过滤只作用于「有哪些主机」；
+- **存储条目不受过滤**：在面板里手动添加的主机是明确的意图，一律列出，即使它指向
+  Git 服务。
+
+确实需要把这类块也列出来时（比如构建账号真的叫 `git`），用环境变量整体关掉过滤：
+
+```
+DSH_SSH_WORKSPACE_SHOW_GIT_HOSTS=1 dsh web   # 改完需重启宿主
+```
+
+该开关每次列表现读，但宿主的环境变量只在启动时取，所以切换它要重启；改
+`~/.ssh/config` 则不需要（列表每次都重读文件）。
+
 ## 认证与凭据
 
 - 密码与私钥口令**加密后**保存在 `dsh-ssh.json` 的 `secrets` 段，按别名存放：
