@@ -14,8 +14,8 @@
  *   - a draft that is still completing a name in the directory on screen only
  *     NARROWS the rows (case-insensitive), at frame speed;
  *   - a draft that names another directory lists it after a short pause;
- *   - a draft that spells a listed name in full ENTERS that directory, so a
- *     complete path shows its contents rather than one matching row.
+ *   - a draft that spells a listed name in full only NARROWS to that row: a
+ *     trailing slash (or Enter / a double click) is the explicit way inside.
  *
  * ## Why the real hook, not a grep
  *
@@ -76,7 +76,7 @@ const debounceMatch = /const PATH_PREVIEW_DEBOUNCE_MS = (\d+)/u.exec(source)
 if (debounceMatch === null) throw new Error('client.js no longer defines PATH_PREVIEW_DEBOUNCE_MS')
 const DEBOUNCE = Number(debounceMatch[1])
 
-const HELPERS = ['draftDirectoryTarget', 'narrowDirectoryEntries', 'typedDirectoryEntry', 'childDirectoryPath']
+const HELPERS = ['draftDirectoryTarget', 'directoryPath', 'directoryDraft', 'narrowDirectoryEntries', 'childDirectoryPath']
 const HOOK = liftFunction('usePathDraftPreview')
 
 /**
@@ -234,10 +234,12 @@ function makePicker ({ factory, dir, rows }) {
   let exposed = {}
   let fragment = ''
 
+  const settledDraft = dir === '/' ? '/' : `${dir}/`
+
   function Picker () {
     const [currentDir, setDir] = hooks.React.useState(dir)
     const [listing, setListing] = hooks.React.useState(rows)
-    const [draft, setDraft] = hooks.React.useState(dir)
+    const [draft, setDraft] = hooks.React.useState(settledDraft)
     const loadDir = hooks.React.useCallback((target) => { loads.push(target) }, [])
     exposed = { setDir, setListing, setDraft }
     fragment = usePathDraftPreview({ draft, currentDir, listing, loadDir })
@@ -304,7 +306,7 @@ function makeDialog ({ name, props }) {
   const hooks = makeHooks()
   const clock = makeClock()
   const requests = []
-  const HOME_ROWS = [{ name: 'Documents', type: 'directory' }, { name: 'projects', type: 'directory' }]
+  const HOME_ROWS = [{ name: 'Documents', type: 'directory' }, { name: 'projects', type: 'directory' }, { name: 'notes.txt', type: 'file' }]
   let tree = null
 
   const jsx = (type, nodeProps) => ({ type, props: nodeProps ?? {} })
@@ -316,6 +318,7 @@ function makeDialog ({ name, props }) {
     API: { ls: '/ls', mount: '/mount', hosts: '/hosts' },
     BROWSE_LIST_LIMIT: 2000,
     FolderIcon: function FolderIcon () {},
+    FileIcon: function FileIcon () {},
     GlobeIcon: function GlobeIcon () {},
     ArrowLeftIcon: function ArrowLeftIcon () {},
     CloseIcon: function CloseIcon () {},
@@ -338,7 +341,7 @@ function makeDialog ({ name, props }) {
     },
   }
 
-  const parts = [...HELPERS, 'usePathDraftPreview', name].map(liftFunction)
+  const parts = [...HELPERS, 'compareListingEntries', 'usePathDraftPreview', name].map(liftFunction)
   // eslint-disable-next-line no-new-func
   const Component = new Function(
     'React', 'setTimeout', 'clearTimeout', 'jsx', 'jsxs', 'PATH_PREVIEW_DEBOUNCE_MS', ...Object.keys(stubs),
@@ -441,7 +444,7 @@ function makeClock () {
 }
 
 const shipped = buildFactory()
-const { draftDirectoryTarget, narrowDirectoryEntries, typedDirectoryEntry, childDirectoryPath } = shipped({}, () => {}, () => {}, DEBOUNCE)
+const { draftDirectoryTarget, directoryPath, directoryDraft, narrowDirectoryEntries, childDirectoryPath } = shipped({}, () => {}, () => {}, DEBOUNCE)
 
 // ---- the pure reading of a draft --------------------------------------------
 
@@ -456,13 +459,16 @@ check('a trailing slash names the typed directory itself',
 check('...and is settled when that is the directory already shown',
   target('/home/me/projects/', '/home/me/projects') === JSON.stringify({ dir: '/home/me/projects', fragment: '', refresh: false }),
   'a typed trailing slash would re-list the directory on screen')
-check('...even when the echoed path carries the trailing slash',
-  target('/home/me/projects', '/home/me/projects/') === JSON.stringify({ dir: '/home/me/projects', fragment: '', refresh: false }),
+check('a draft without the slash is a fragment of the parent',
+  target('/home/me/projects', '/home/me/projects') === JSON.stringify({ dir: '/home/me', fragment: 'projects', refresh: true }),
+  'deleting the slash must go back up, not stay inside')
+check('...even when the echoed path carries the slash',
+  target('/home/me/projects', '/home/me/projects/') === JSON.stringify({ dir: '/home/me', fragment: 'projects', refresh: true }),
   'the echo of a typed trailing slash is not a different directory')
 check('a pasted complete path is split into parent + last segment',
   target('/home/me/projects', '/') === JSON.stringify({ dir: '/home/me', fragment: 'projects', refresh: true }))
-check('the settled state (draft equals the shown directory) asks for nothing',
-  target('/home/me', '/home/me') === JSON.stringify({ dir: '/home/me', fragment: '', refresh: false }),
+check('the settled state asks for nothing — and it is spelled with the slash',
+  target('/home/me/', '/home/me') === JSON.stringify({ dir: '/home/me', fragment: '', refresh: false }),
   'navigation would re-list the parent on every render')
 check('a first-level directory filters the root',
   target('/home', '/home/me') === JSON.stringify({ dir: '/', fragment: 'home', refresh: true }))
@@ -495,22 +501,15 @@ check('a fragment that matches nothing yields an empty listing',
   names(narrowDirectoryEntries(HOME, 'zzz')) === '')
 check('a missing listing stays missing', narrowDirectoryEntries(null, 'x') === null)
 
-// ---- entering a fully typed name --------------------------------------------
-
-console.log('[exact name]')
-
-check('a fully typed, case-exact name is the directory to enter',
-  typedDirectoryEntry(HOME, 'projects')?.name === 'projects')
-check('...but a case-insensitive near-match is only a row, never an entry',
-  typedDirectoryEntry(HOME, 'Projects') === null,
-  'a forgiving filter must not invent a spelling the host does not have')
-check('...nor is a file', typedDirectoryEntry([{ name: 'notes', type: 'file' }], 'notes') === null)
-check('an empty fragment never enters anything', typedDirectoryEntry(HOME, '') === null)
-
 // ---- child paths -------------------------------------------------------------
 
 console.log('[child paths]')
 
+check('a path loses its trailing slash for identity', directoryPath('/home/me/') === '/home/me')
+check('...but the root stays the root', directoryPath('/') === '/')
+check('a directory is spelled for the input WITH the slash',
+  directoryDraft('/home/me') === '/home/me/' && directoryDraft('/home/me/') === '/home/me/' &&
+    directoryDraft('/') === '/')
 check('a child of the root has one slash', childDirectoryPath('/', 'etc') === '/etc')
 check('a child of a directory is joined with one slash', childDirectoryPath('/home/me', 'x') === '/home/me/x')
 check('a trailing slash on the parent does not double', childDirectoryPath('/home/me/', 'x') === '/home/me/x')
@@ -557,9 +556,14 @@ console.log('[the hook]')
 {
   const picker = makePicker({ factory: shipped, dir: '/home/me', rows: HOME })
   const fragment = picker.set({ draft: '/home/me/projects' })
-  check('a fully typed name narrows to the row first', fragment === 'projects', `fragment=${JSON.stringify(fragment)}`)
+  check('a fully typed name narrows to a single row', fragment === 'projects', `fragment=${JSON.stringify(fragment)}`)
+  picker.advance(DEBOUNCE * 2)
+  check('...and does NOT open it — entering is not something the input does on its own',
+    picker.loads.length === 0 && picker.pendingTimers() === 0,
+    `loads=${picker.loads.join()} timers=${picker.pendingTimers()}`)
+  picker.set({ draft: '/home/me/projects/' })
   picker.advance(DEBOUNCE)
-  check('...and then enters it, because the draft names a real directory',
+  check('...while the trailing slash lists it',
     picker.loads.length === 1 && picker.loads[0] === '/home/me/projects', picker.loads.join())
   const settled = picker.deliver('/home/me/projects', [{ name: 'src', type: 'directory' }])
   check('...settling there without another listing',
@@ -573,6 +577,22 @@ console.log('[the hook]')
   picker.advance(DEBOUNCE)
   check('a case-insensitive near-match does not enter the directory',
     picker.loads.length === 0, picker.loads.join())
+}
+
+{
+  const picker = makePicker({ factory: shipped, dir: '/home/me', rows: HOME })
+  picker.set({ draft: '/home/me/projects/' })
+  picker.advance(DEBOUNCE)
+  picker.deliver('/home/me/projects', [{ name: 'src', type: 'directory' }])
+  const before = picker.loads.length
+  picker.set({ draft: '/home/me/projects' })
+  picker.advance(DEBOUNCE)
+  check('deleting the trailing slash lists the parent again (the way back up)',
+    picker.loads.length === before + 1 && picker.loads[picker.loads.length - 1] === '/home/me',
+    picker.loads.join())
+  const narrowed = picker.deliver('/home/me', HOME)
+  check('...and filters it by the last segment',
+    narrowed === 'projects', JSON.stringify(narrowed))
 }
 
 {
@@ -614,11 +634,17 @@ console.log('[the dialogs]')
     props: { alias: 'box', onClose () {}, onMount () {}, ctx: {}, t: (key) => key },
   })
   await dialog.settle()
-  check('the browser dialog opens on the login directory',
-    dialog.input()?.props.value === '/home/me', String(dialog.input()?.props.value))
+  check('the browser dialog opens on the login directory, spelled as a directory',
+    dialog.input()?.props.value === '/home/me/', String(dialog.input()?.props.value))
   check('...with that directory\'s rows',
     dialog.rows().join() === 'Documents,projects', dialog.rows().join())
   check('...after exactly one listing', dialog.requests.length === 1, dialog.requests.join())
+  const fileRow = dialog.find((node) => String(node.props?.className ?? '').includes('sshwsp-entry-file'))
+  check('a file in the listing is an inert row, not a control',
+    fileRow !== undefined && fileRow.type === 'div' &&
+      fileRow.props.onClick === undefined && fileRow.props.onDoubleClick === undefined &&
+      fileRow.props.children[1].props.children === 'notes.txt',
+    fileRow === undefined ? 'no file row rendered' : String(fileRow.type))
 
   dialog.setDraft('/home/me/pro')
   check('typing a prefix narrows the rendered rows immediately',
@@ -628,15 +654,35 @@ console.log('[the dialogs]')
   dialog.setDraft('/home/me/projects')
   dialog.advance(DEBOUNCE)
   await dialog.settle()
-  check('a fully typed name lists that directory',
+  check('a fully typed name only narrows the rows',
+    dialog.rows().join() === 'projects' && dialog.requests.length === 1,
+    `${dialog.rows().join()} / ${dialog.requests.join()}`)
+  check('...and the text stays in the box', dialog.input()?.props.value === '/home/me/projects',
+    String(dialog.input()?.props.value))
+
+  dialog.setDraft('/home/me/projects/')
+  dialog.advance(DEBOUNCE)
+  await dialog.settle()
+  check('a trailing slash lists that directory',
     dialog.requests.length === 2 && dialog.requests[1].includes('path=%2Fhome%2Fme%2Fprojects'),
     dialog.requests.join())
   check('...and renders its contents', dialog.rows().join() === 'src', dialog.rows().join())
   check('...leaving the typed text in the box',
-    dialog.input()?.props.value === '/home/me/projects', String(dialog.input()?.props.value))
+    dialog.input()?.props.value === '/home/me/projects/', String(dialog.input()?.props.value))
   check('the mount button names the directory it will mount',
     dialog.mountButton()?.props.title === '/home/me/projects',
     String(dialog.mountButton()?.props.title))
+
+  // The reported bug: deleting the slash kept showing the directory's contents.
+  dialog.setDraft('/home/me/projects')
+  dialog.advance(DEBOUNCE)
+  await dialog.settle()
+  check('deleting the trailing slash returns to the filtered parent',
+    dialog.requests.length === 3 && dialog.requests[2].includes('path=%2Fhome%2Fme') &&
+      dialog.rows().join() === 'projects',
+    `${dialog.requests.join()} / ${dialog.rows().join()}`)
+  check('...and the input keeps the slash-free spelling it was given',
+    dialog.input()?.props.value === '/home/me/projects', String(dialog.input()?.props.value))
 
   dialog.setDraft('/home/me/nope')
   dialog.press('Enter')
@@ -652,7 +698,7 @@ console.log('[the dialogs]')
   })
   await dialog.settle(4)
   check('the remote chooser resolves the host and its login directory',
-    dialog.input()?.props.value === '/home/me', String(dialog.input()?.props.value))
+    dialog.input()?.props.value === '/home/me/', String(dialog.input()?.props.value))
   check('...and renders that directory\'s rows',
     dialog.rows().join() === 'Documents,projects', dialog.rows().join())
   check('...with creation allowed on a writable directory',
@@ -669,7 +715,7 @@ console.log('[the dialogs]')
     dialog.input()?.props.value === '', String(dialog.input()?.props.value))
   await dialog.settle(4)
   check('...and adopts the new host\'s login directory',
-    dialog.input()?.props.value === '/home/me', String(dialog.input()?.props.value))
+    dialog.input()?.props.value === '/home/me/', String(dialog.input()?.props.value))
 }
 
 // ---- the negative control ----------------------------------------------------
@@ -709,8 +755,8 @@ check('...and render the narrowed rows, not the raw listing',
 check('neither picker resets the draft when the input loses focus',
   !/onBlur: \(\) => setPathDraft/u.test(live),
   'a blur reset un-filters the list between the two clicks of a double click')
-check('both branches of the hook debounce their listing',
-  (live.match(/\}, PATH_PREVIEW_DEBOUNCE_MS\)/gu) ?? []).length === 2)
+check('the cross-directory branch debounces its listing (the fragment branch never asks)',
+  (live.match(/\}, PATH_PREVIEW_DEBOUNCE_MS\)/gu) ?? []).length === 1)
 check('a debounced listing is cancelled when the draft moves on',
   (live.match(/clearTimeout\(timer\)/gu) ?? []).length >= 2)
 check('the pause is a short human-scale delay, not a second',

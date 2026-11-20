@@ -1,6 +1,10 @@
 /**
  * The pickers' one-round-trip directory listing, against a REAL shell.
  *
+ * Two shapes live here: `dirsListingCommand` (subdirectories only) and
+ * `entriesListingCommand` (directories first, then files — what the pickers
+ * actually request, so the folder they are about to mount can be read).
+ *
  * ## Why the listing stopped using `sftp.readdir`
  *
  * It is the correct primitive and it is slow for the one thing the pickers do:
@@ -63,7 +67,7 @@ if (!coreRoot) {
 }
 process.env.DSH_PEER_ROOT = [coreRoot, process.env.DSH_PEER_ROOT].filter(Boolean).join(path.delimiter)
 
-const { dirsListingCommand, parseDirsListing } = await import(
+const { dirsListingCommand, parseDirsListing, entriesListingCommand, parseEntriesListing } = await import(
   pathToFileURL(path.join(pluginRoot, 'lib', 'routes.js')).href
 )
 
@@ -84,6 +88,24 @@ function list (dir, limit, cwd) {
   })
   const outcome = { exitCode: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
   return { command, result: outcome, parse: parseDirsListing(outcome, limit) }
+}
+
+/**
+ * The all-entries variant: directories AND files, directories first.
+ *
+ * @param {string} dir - absolute directory, or '' for the login directory.
+ * @param {number} limit - the cap the command is built with.
+ * @param {string} [cwd] - the shell's working directory (`path === ''`).
+ * @returns {{parse: object|null, result: object, command: string}} the parsed answer and the raw run.
+ */
+function listAll (dir, limit, cwd) {
+  const command = entriesListingCommand(dir, limit)
+  const result = spawnSync('sh', ['-c', command], {
+    cwd: cwd ?? pluginRoot,
+    encoding: 'utf8',
+  })
+  const outcome = { exitCode: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+  return { command, result: outcome, parse: parseEntriesListing(outcome, limit) }
 }
 
 const root = await mkdtemp(path.join(tmpdir(), 'dsh-dirs-listing-'))
@@ -150,6 +172,58 @@ try {
     const { parse } = list(`${root}/`, 10)
     check('a trailing slash is echoed as given and still lists',
       parse !== null && parse.path === `${root}/` && parse.total === 7, JSON.stringify(parse))
+  }
+
+  // ---- the all-entries variant ------------------------------------------------
+
+  console.log('[directories and files]')
+  {
+    const { parse, result } = listAll(root, 500)
+    check('the all-entries command lists directories first, then files',
+      parse !== null &&
+        parse.names.slice(0, 7).join() === '-dash,.hidden,alpha,beta,locked,noread,with space' &&
+        parse.names.slice(7).sort().join() === 'dangling,linkdir,notes.txt',
+      parse === null ? result.stderr.trim() : parse.names.join())
+    check('...typing the leading names by position, not a per-name column',
+      parse?.dirCount === 7 && parse?.total === 10, JSON.stringify(parse))
+    check('...and the account can write there', parse?.writable === true, String(parse?.writable))
+  }
+
+  {
+    const { parse } = listAll(root, 3)
+    check('the all-entries cap spends on directories first',
+      parse?.names.length === 3 && parse?.dirCount === 3 && parse?.total === 10 &&
+        parse.names.every(name => ['-dash', '.hidden', 'alpha'].includes(name)),
+      JSON.stringify(parse))
+  }
+
+  {
+    const { parse } = listAll(root, 9)
+    check('...and only then lets files into the remaining room',
+      parse?.names.length === 9 && parse?.dirCount === 7 &&
+        parse.names.slice(7).join() === 'dangling,linkdir',
+      JSON.stringify(parse))
+  }
+
+  {
+    const { parse } = listAll(path.join(root, 'nope'), 10)
+    check('a missing directory is a fallback for the all-entries listing too',
+      parse === null, JSON.stringify(parse))
+  }
+
+  {
+    const all = { exitCode: 0, stdout: 'd\nf\n', stderr: '__dsh_ssh_ws_all__ 2 1 1 /x\n' }
+    check('the all-entries parser reads the expected shape',
+      parseEntriesListing(all, 2)?.names.join() === 'd,f' && parseEntriesListing(all, 2)?.dirCount === 1)
+    check('...and refuses a non-zero exit', parseEntriesListing({ ...all, exitCode: 1 }, 2) === null)
+    check('...a missing marker',
+      parseEntriesListing({ exitCode: 0, stdout: 'd\n', stderr: '' }, 2) === null)
+    check('...the script\'s fallback line',
+      parseEntriesListing({ exitCode: 0, stdout: '', stderr: '__dsh_ssh_ws_all__ fallback\n' }, 2) === null)
+    check('...a name count that is not min(total, limit)',
+      parseEntriesListing({ ...all, stdout: 'd\n' }, 2) === null)
+    check('...more directories than the total says',
+      parseEntriesListing({ exitCode: 0, stdout: 'd\nf\n', stderr: '__dsh_ssh_ws_all__ 2 3 1 /x\n' }, 2) === null)
   }
 
   // ---- the shapes the caller must NOT trust ---------------------------------

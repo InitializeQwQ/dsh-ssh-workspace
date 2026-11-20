@@ -2337,6 +2337,62 @@ async function postChunk (route, body, chunks = []) {
       check('a listing whose counts do not add up is not trusted',
         calls.sftp === 1, `sftp=${calls.sftp}`)
     }
+
+    // `all=1` is the pickers' listing: directories AND files, directories
+    // first, still one exec, and the cap still protects the directories.
+    {
+      const allMeta = (total, dirs, writable, path) => `__dsh_ssh_ws_all__ ${total} ${dirs} ${writable} ${path}\n`
+      const { body, calls } = await runListing(
+        '&path=%2Fhome%2Fdev%2Fproject&all=1&limit=4',
+        { exitCode: 0, stdout: 'src\ndocs\nREADME.md\npackage.json\n', stderr: allMeta(4, 2, 1, '/home/dev/project') },
+      )
+      check('an all=1 listing is also one exec and no SFTP',
+        calls.exec.length === 1 && calls.sftp === 0, `exec=${calls.exec.length} sftp=${calls.sftp}`)
+      check('...the command lists the whole directory, not just subdirectories',
+        calls.exec[0].command.includes("dir='/home/dev/project'") && calls.exec[0].command.includes('__dsh_ssh_ws_all__') &&
+          !calls.exec[0].command.includes('__dsh_ssh_ws_dirs__'),
+        calls.exec[0].command.slice(0, 140))
+      check('...and the response types the names positionally',
+        body.entries.map(entry => `${entry.name}:${entry.type}`).join() === 'src:directory,docs:directory,README.md:file,package.json:file',
+        JSON.stringify(body.entries))
+      check('...with the total and writability the remote reported',
+        body.total === 4 && body.truncated === false && body.writable === true,
+        JSON.stringify({ total: body.total, truncated: body.truncated, writable: body.writable }))
+    }
+
+    {
+      const allMeta = (total, dirs, writable, path) => `__dsh_ssh_ws_all__ ${total} ${dirs} ${writable} ${path}\n`
+      const { body } = await runListing(
+        '&path=%2Ftmp&all=1&limit=2',
+        { exitCode: 0, stdout: 'a\nb\n', stderr: allMeta(500, 40, 1, '/tmp') },
+      )
+      check('the all=1 cap still spends on directories first',
+        body.entries.map(entry => entry.type).join() === 'directory,directory' &&
+          body.total === 500 && body.truncated === true,
+        JSON.stringify({ entries: body.entries, total: body.total, truncated: body.truncated }))
+    }
+
+    {
+      const { body, calls } = await runListing(
+        '&path=%2Fhome%2Fdev%2Fproject&all=1',
+        { exitCode: 127, stdout: '', stderr: 'sh: awk: not found\n' },
+        [{ name: 'from-sftp', type: 'file' }],
+      )
+      check('a failed all=1 fast path falls back to SFTP with files intact',
+        calls.sftp === 1 && body.entries.length === 1 && body.entries[0].name === 'from-sftp',
+        JSON.stringify(body.entries))
+    }
+
+    {
+      const { state } = await runListing('&path=%2Fx&all=2', { exitCode: 0, stdout: '', stderr: '' })
+      check('all=2 is refused rather than read as true', state.status === 400, String(state.status))
+    }
+
+    {
+      const { state } = await runListing('&path=%2Fx&dirs=1&all=1', { exitCode: 0, stdout: '', stderr: '' })
+      check('dirs=1 and all=1 together are refused, not silently prioritised',
+        state.status === 400, String(state.status))
+    }
   }
 
   {
