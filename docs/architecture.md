@@ -617,8 +617,8 @@ shell。接管后，`spec.cwd` 是 `ssh://` 就改开 SSH PTY 通道，返回满
 | --- | --- | --- |
 | 连接超时 | 15s | `engine.connectTimeoutMs` |
 | keepalive | 15s | `engine.keepaliveIntervalMs` |
-| 空闲回收 | 30 分钟（sweeper 每 60s 扫一遍，有请求在飞不回收） | `engine.idleTimeoutMs` / `engine.sweepIntervalMs` |
-| 主机变更 | `forget(alias)` 丢弃旧连接，下次操作按新配置重连 | — |
+| 空闲回收 | 30 分钟（sweeper 每 60s 扫一遍，有请求在飞不回收；**连接开关打开过的主机豁免**，见 `addKeepAliveCheck`） | `engine.idleTimeoutMs` / `engine.sweepIntervalMs` |
+| 主机变更 | `forget(alias)` 丢弃旧连接，下次操作按新配置重连；连接开关打开过的主机由后台循环按新配置重拨 | — |
 | 主动断开 | `hosts/disconnect` 先 `savedForwards.closeAlias(alias)`（逐条走 `closeById`，与端口行「断开」同一条路径）再 `forget(alias)`，响应 `closedForwards` 报告拆了几条隧道 | — |
 | 测试连接 | `test` 连一次即 `forget(alias)` 释放（被转发的 `holds` 钉住时不释放） | — |
 | 后台重连 | 1s 起指数退避、60s 封顶、默认不限次数 | `engine.reconnect.baseDelayMs` / `maxDelayMs` / `maxAttempts` / `jitter`（`false` 关闭） |
@@ -631,15 +631,38 @@ shell。接管后，`spec.cwd` 是 `ssh://` 就改开 SSH PTY 通道，返回满
   `sweep`、被替换的记录——都先摘池再 `end()`，所以「还在池里」等价于「不是我们关的」）。
   前台操作连接失败时也会把别名交给它，这是合盖唤醒后最常见的路径。
 - **停止规则比延迟阶梯更重要**：每次尝试前重新问 `#isWanted(alias)`——已挂载根、
-  `holds > 0`、或注册的额外谓词（`addWantedCheck`，目前是「该主机有 `enabled` 的保存转发」）。
-  三者皆无就停，所以卸载最后一个工作区不会被后台拨号。不可恢复的错误（未知别名、
-  读不到私钥、主机密钥不匹配）标记 `fatal` 后立刻停止，不每分钟重复同一个失败。
+  `holds > 0`、或注册的额外谓词（`addWantedCheck`，目前是「该主机有 `enabled` 的保存转发」），
+  以及**连接开关打开过的主机**（`addKeepAliveCheck`，见下）。三者皆无就停，所以卸载最后一个
+  工作区不会被后台拨号。不可恢复的错误（未知别名、读不到私钥、主机密钥不匹配）标记 `fatal`
+  后立刻停止，不每分钟重复同一个失败。
 - **恢复消费者**：`onReconnected` 只由后台循环调用（前台 `acquire` 不调用，否则每次首次连接
   都像一次恢复而重开用户关掉的隧道），当前用途是重开该主机 `enabled` 的保存转发；文件系统
   seam 与持久 shell 在下次使用时自行重连。
 - **可观测**：每轮写 `reconnect` 事件（前 3 次、之后每 5 次、以及结束那次，避免一下午的断网
   冲掉 40 条环形缓冲），状态经 `ssh_workspace_status` 的 `reconnecting` 字段与面板卡片暴露；
   `POST /hosts/reconnect` 跳过等待立即尝试。
+
+### 启动自动连接（`lib/host-intent.js`）
+
+面板的连接开关是**持久意图**，不是一次性的命令：`/hosts/reconnect` 先把它写进 store 的顶层
+`autoConnect` 数组再拨号（`~/.ssh/config` 主机也记，所以数组在顶层而不是条目字段），
+`/hosts/disconnect` 先清除它再拆卸——顺序是刻意的，写盘失败时请求失败、连接原样保留，
+绝不会出现「按钮说断了、下次启动又连回来」。
+
+插件激活时 `HostIntent.restore()` 在稍后的 tick 上串行重连这些别名，与已存隧道的
+`SavedForwardManager.autoStart()` 同一个形状：不阻塞激活、单个失败不中断其余；失败由
+`acquire` 自己的前台失败路径交给后台循环（`noteLost`，fatal 配置错误除外）。**刻意不用**
+调度器的 `retryNow`：它成功时会跑恢复钩子，也就是在启动时重开该主机的已存隧道——那会
+绕过面板「启动时自动开启隧道」这个总开关，而「主机保持连接」与「隧道自动恢复」是两件事。
+
+同一个谓词注册为 `engine.addKeepAliveCheck()`，这让「连接开关打开过」同时回答两个问题：
+
+- `#isWanted` → 掉线后值得重拨（否则没有挂载根 / 转发的空闲连接没人替它说话，循环会停）；
+- `sweep()` → 空闲回收跳过它（只写进 `#isWanted` 是不够的：连接会在 30 分钟无操作后被
+  回收，而回收是**主动**路径，不会武装重连循环，重启恢复等于白做）。
+
+它和条目级的 `enabled`（能否用来创建新工作区）是**两件事**：一台主机可以是长期保持连接的
+执行 / 转发目标，却不出现在「新建远程工作区」的下拉里。
 
 **连接与转发的方向性是单向的**，且两个方向都有测试守着：
 

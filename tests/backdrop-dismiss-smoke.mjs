@@ -185,15 +185,15 @@ check('the helper is declared in the factory scope beside the components, not at
 console.log('\n[wiring]')
 
 const backdrops = [...source.matchAll(/className: 'sshwsp-backdrop'[^\n]*/g)].map(match => match[0])
-check('all five dialog backdrops were found', backdrops.length === 5, `${backdrops.length} found`)
+check('all seven dialog backdrops were found', backdrops.length === 7, `${backdrops.length} found`)
 check('no backdrop still dismisses on a raw onClick',
   backdrops.every(line => !/onClick/.test(line)),
   backdrops.filter(line => /onClick/.test(line)).join(' | '))
 check('every backdrop spreads backdropDismiss',
-  backdrops.length === 5 && backdrops.every(line => line.includes('...backdropDismiss(')),
+  backdrops.length === 7 && backdrops.every(line => line.includes('...backdropDismiss(')),
   backdrops.join(' | '))
 check('the helper is wired at every floating surface',
-  (source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length === 6,
+  (source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length === 8,
   `${(source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length} call(s)`)
 
 console.log('\n[wiring: each dialog keeps its own busy guard]')

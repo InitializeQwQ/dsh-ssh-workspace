@@ -128,23 +128,17 @@ check('lib/client.js is excluded from the host entry points',
 console.log('\n[five-row list cap]')
 // Each long list is a scrolling viewport, not a truncation: dropping rows
 // would hide a row's controls (a tunnel you cannot see is one you cannot turn
-// off). The four sections the cap applies to are pinned here, because losing
+// off). The sections the cap applies to are pinned here, because losing
 // one of the wrappers silently brings back a panel that scrolls for pages.
 if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel))) {
   const client = readFileSync(path.join(packageRoot, clientRel), 'utf8')
   check('LIST_CAP is 5', /const LIST_CAP = 5\b/.test(client))
   check('CappedList is defined', /function CappedList \(/.test(client))
   const capped = (client.match(/jsx\(CappedList, \{/g) ?? []).length
-  // The four original sections (hosts, forwards, mounted, detached) plus the
-  // two the Future work added (self-check, command audit). The assertion is a
-  // FLOOR rather than an exact count: adding a section is not a regression,
-  // while dropping the cap from one is — so the meaningful check is that every
-  // list-like section goes through CappedList at all, which the named list below
-  // makes explicit.
-  check('every list section is capped (hosts, forwards, mounted, detached, self-check, audit)', capped >= 6, `found ${capped} wrappers`)
-  check('the sections that must be capped still are',
-    ['sshwsp-hosts', 'sshwsp-forwards', 'sshwsp-mounts', 'sshwsp-check', 'sshwsp-audit'].every(className => client.includes(`className: '${className}'`)),
-    JSON.stringify(['sshwsp-hosts', 'sshwsp-forwards', 'sshwsp-mounts', 'sshwsp-check', 'sshwsp-audit'].filter(className => !client.includes(`className: '${className}'`))))
+  const cappedClasses = ['sshwsp-hosts', 'sshwsp-forwards', 'sshwsp-check', 'sshwsp-audit']
+  check('every list section is capped (hosts, forwards, self-check, audit)', capped >= cappedClasses.length, `found ${capped} wrappers`)
+  const uncapped = cappedClasses.filter(className => !client.includes(`className: '${className}'`))
+  check('the sections that must be capped still are', uncapped.length === 0, JSON.stringify(uncapped))
   check('the cap is measured, not assumed from a fixed row height',
     /getBoundingClientRect\(\)\.height/.test(client) && !/LIST_CAP \* \d+px/.test(client))
   check('a short list renders without a reserved scrollbar slot',
@@ -164,9 +158,9 @@ console.log('\n[stylesheet covers the classes the bundle renders]')
 // Each entry below is a class the panel depends on for MEANING, not decoration.
 if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel))) {
   const client = readFileSync(path.join(packageRoot, clientRel), 'utf8')
-  for (const className of ['sshwsp-empty', 'sshwsp-mount', 'sshwsp-mount-path', 'sshwsp-entry-meta', 'sshwsp-btn', 'sshwsp-input', 'sshwsp-mount-off', 'sshwsp-check']) {
+  for (const className of ['sshwsp-empty', 'sshwsp-mount', 'sshwsp-mount-path', 'sshwsp-entry-meta', 'sshwsp-btn', 'sshwsp-input', 'sshwsp-check']) {
     // Rendered either as its own class token or inside a multi-class list
-    // ("sshwsp-mount sshwsp-mount-off"); the declaration is what this pins.
+    // ("sshwsp-mount sshwsp-forward-row"); the declaration is what this pins.
     check(`.${className} is rendered and declared`,
       client.includes(className) && new RegExp(`\\.${className}\\s*[,{]`).test(client),
       'used in the UI but missing from the injected stylesheet')
@@ -372,41 +366,17 @@ if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel
   }
 }
 
-console.log('\n[the unmount hint states BOTH outcomes, and only in the tooltip]')
-// The two unmount modes have opposite consequences, so the hint has to name both
-// rather than reassure about one: "the record and its sessions are kept" is true
-// only while the checkbox is clear, and a user who ticks it and reads that line
-// has been told the opposite of what will happen. It also lives in the tooltip
-// alone — an always-on line under the row would have to be rewritten as the
-// checkbox flips, and a second copy of the same sentence drifts from the first.
+console.log('\n[remote workspace panel navigation]')
 if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel))) {
   const client = readFileSync(path.join(packageRoot, clientRel), 'utf8')
-  const hints = [...client.matchAll(/'mounted\.detachHint': '([^']*)'/g)].map(match => match[1])
-  const [zhHint = '', enHint = ''] = hints
-  check('both locales define the unmount hint', hints.length === 2, `${hints.length} definition(s)`)
-  check('the unmount hint names what happens WITHOUT the checkbox',
-    /未勾选/.test(zhHint) && /保留/.test(zhHint),
-    zhHint)
-  check('...and what happens WITH it',
-    /勾选/.test(zhHint) && /归档/.test(zhHint),
-    zhHint)
-  // The English hint is asserted on its own text, not on the bundle at large:
-  // "archived" appears in unrelated keys, so a bundle-wide regex would pass even
-  // if this one hint still described only the reversible branch.
-  check('...in English too, so the two locales cannot diverge in meaning',
-    /without/i.test(enHint) && /archived/i.test(enHint) && /deleted/i.test(enHint),
-    enHint)
-  check('the hint is carried by the unmount button',
-    /title: t\('mounted\.detachHint'\),\s*\n\s*onClick: \(\) => \{ setUnmountConfirm\(wsPath\)/
-      .test(client),
-    'the button that starts the flow lost its explanation')
-  check('...and by the confirm button, which replaces it once armed',
-    /title: t\('mounted\.detachHint'\),\s*\n\s*onClick: \(\) => handleUnmount\(wsPath, unmountMode\)/
-      .test(client),
-    'the tooltip vanishes at the exact moment the click becomes irreversible')
-  check('the hint is not duplicated as a standing line in the row',
-    !/sshwsp-entry-meta', children: t\('mounted\.detachHint'\)/.test(client),
-    'a second copy of the same sentence drifts from the tooltip')
+  check('the panel has SSH, port forwarding and settings tabs',
+    client.includes("children: ['ssh', 'forwards', 'settings'].map") && !client.includes("page === 'workspaces'"))
+  check('the selected SSH tab and its connection switch use the blue accent',
+    client.includes('.sshwsp-page-tab-ssh[aria-current="page"] { color: var(--sshwsp-ssh-blue)') &&
+    client.includes('.sshwsp-switch-on { background: var(--sshwsp-ssh-blue)'))
+  check('the host editor scrolls its form without changing the other dialogs',
+    client.includes('.sshwsp-dialog-body.sshwsp-host-editor-body { overflow-y: auto') &&
+    /function HostEditor \([\s\S]*?className: 'sshwsp-dialog-body sshwsp-host-editor-body'/u.test(client))
 }
 
 console.log('\n[a deliberate disconnect looks like closing the tunnel by hand]')
@@ -575,8 +545,8 @@ console.log('\n[a11y: the menu contract]')
     /if \(event\.key === 'Tab'\)/u.test(source) && /closeRef\.current\(\)/u.test(source), 'Tab not handled')
   check('the hook is defined once',
     count(/function useMenuKeyboard /gu) === 1, `${count(/function useMenuKeyboard /gu)} definition(s)`)
-  check('the menu is wired to the hook',
-    count(/useMenuKeyboard\(\{/gu) === 1, `${count(/useMenuKeyboard\(\{/gu)} call site(s)`)
+  check('the workspace chooser and host menu are wired to the hook',
+    count(/useMenuKeyboard\(\{/gu) === 2, `${count(/useMenuKeyboard\(\{/gu)} call site(s)`)
   // A screen reader announces "item N of M" only when BOTH attributes are
   // present; `role="menu"` alone leaves the count to the reader's guess. The
   // position must be derived from the row's index, not written per item, or it
@@ -601,12 +571,14 @@ console.log('\n[a11y: the menu contract]')
 {
   const source = readFileSync(path.join(packageRoot, clientRel), 'utf8')
   check('the panel keeps the listing gaps from the hosts response',
-    /setListingGaps\(\{ skipped: data\.skipped \?\? \[\], ignored: data\.ignored \?\? \[\], storeError: data\.storeError \}\)/u.test(source))
+    /setListingGaps\(\{ skipped: data\.skipped \?\? \[\], storeError: data\.storeError \}\)/u.test(source))
   check('an unreadable store gets its own sentence and displays the reason',
     /listingGaps\.storeError === undefined \? 'panel\.empty' : 'panel\.storeError'/u.test(source) &&
       /children: connections\.length > 0 [^\n]+ : listingGaps\.storeError/u.test(source))
-  check('the shared listing notes report skipped and ignored counts regardless of the row count',
-    /className: 'sshwsp-listing-notes'[\s\S]{0,800}t\('panel\.skipped', \{ n: listingGaps\.skipped\.length \}\)[\s\S]{0,200}t\('panel\.ignored', \{ n: listingGaps\.ignored\.length \}\)/u.test(source))
+  check('the shared listing notes report the skipped count regardless of the row count',
+    /className: 'sshwsp-listing-notes'[\s\S]{0,800}t\('panel\.skipped', \{ n: listingGaps\.skipped\.length \}\)/u.test(source))
+  check('no Git-only entry bucket survives in the bundle',
+    !/panel\.ignored|listingGaps\.ignored|data\.ignored/u.test(source), 'a removed host-list bucket is still rendered')
   check('the listing notes have their own style', /\.sshwsp-listing-notes \{/u.test(source))
 
 }

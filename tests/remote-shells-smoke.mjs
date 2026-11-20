@@ -65,7 +65,7 @@ function fakeEngine (options = {}) {
     generationOf (alias) { return { generation: state.generation } },
     assertNotDisabled (alias, remotePath) {
       if (state.detached) {
-        throw new Error(`ssh-workspace: cannot access ssh://${alias}${remotePath}: the remote workspace is detached (re-enable it in the panel or with ssh_workspace_enable)`)
+        throw new Error(`ssh-workspace: cannot access ssh://${alias}${remotePath}: the remote workspace is detached (re-enable it with ssh_workspace_enable)`)
       }
     },
     exec (alias, script, opts) {

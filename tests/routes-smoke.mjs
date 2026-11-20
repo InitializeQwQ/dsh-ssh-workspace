@@ -1963,16 +1963,31 @@ async function postChunk (route, body, chunks = []) {
   const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
   const { HostConfigStore } = await import('../lib/store.js')
   const { HostStore } = await import('../lib/hosts.js')
+  const { SecretCodec } = await import('../lib/secrets.js')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-routes-import-'))
   try {
     const configPath = path.join(dir, 'config')
     const storePath = path.join(dir, 'dsh-ssh.json')
-    const config = 'Host imported\n  HostName old.example.test\n  Password example-secret\nHost blocked\n  ProxyCommand false\n'
+    const keyPath = path.join(dir, 'identity')
+    const config = [
+      'Host imported', '  HostName old.example.test', '  Password example-secret', '  ProxyJump ops@bastion:2222',
+      'Host keyed', '  HostName keyed.example.test', `  IdentityFile ${keyPath}`,
+      'Host agent', '  HostName agent.example.test', '  IdentityAgent ~/.ssh/custom-agent.sock',
+      'Host inherited', '  HostName inherited.example.test',
+      'Host inherit*', '  IdentityFile "~/.ssh/team key" # Shared identity',
+      'Host nofile', '  HostName nofile.example.test', '  IdentityFile none',
+      'Host blocked', '  ProxyCommand false',
+    ].join('\n')
     writeFileSync(configPath, config)
-    const store = new HostStore(configPath, new HostConfigStore(storePath))
+    const store = new HostStore(configPath, new HostConfigStore(storePath, new SecretCodec({ path: path.join(dir, 'dsh-ssh.key') })))
     const connected = []
+    const forgotten = []
     const importRoutes = makeRoutes({
-      engine: { store, async acquire (alias) { connected.push(store.resolve(alias).host) } },
+      engine: {
+        store,
+        async acquire (alias) { connected.push(store.resolve(alias).host) },
+        forget (alias) { forgotten.push(alias) },
+      },
       ctx: { get: () => undefined },
     })
     const call = async (routePath, body) => {
@@ -1990,6 +2005,20 @@ async function postChunk (route, body, chunks = []) {
     check('an SSH config host is discoverable before import with no secret in the response',
       before.data.hosts.some(row => row.alias === 'imported' && row.source === 'ssh-config') &&
       before.data.importedAliases.length === 0 && !JSON.stringify(before.data).includes('example-secret'))
+    check('the browser host listing includes the identity file path without exposing it in ordinary discovery',
+      before.data.hosts.find(row => row.alias === 'keyed')?.keyPath === keyPath &&
+      !Object.hasOwn(store.rows().find(row => row.alias === 'keyed'), 'keyPath'))
+    check('the imported host editor receives the configured agent endpoint',
+      before.data.hosts.find(row => row.alias === 'agent')?.agentPath === path.join(os.homedir(), '.ssh/custom-agent.sock'))
+    const identityOf = alias => before.data.hosts.find(row => row.alias === alias)?.identityFile
+    check('the browser lists the configured, inherited and default identity files while offline',
+      identityOf('keyed') === keyPath &&
+      identityOf('inherited') === '~/.ssh/team key' &&
+      identityOf('imported') === '~/.ssh/id_rsa' &&
+      identityOf('nofile') === null)
+    check('the displayed identity file leaves the existing authentication and ordinary discovery unchanged',
+      store.resolve('inherited').auth.kind === 'agent' &&
+      !Object.hasOwn(store.rows().find(row => row.alias === 'inherited'), 'identityFile'))
     check('import rejects an unsupported or nonexistent host',
       (await change('blocked', true)).status === 409 && (await change('unknown', true)).status === 409)
     check('import membership is explicit', (await change('imported')).status === 400)
@@ -2002,14 +2031,39 @@ async function postChunk (route, body, chunks = []) {
     check('membership survives a fresh store read and is returned to the client',
       new HostConfigStore(storePath).sshConfigImports().join() === 'imported' &&
       (await list()).data.importedAliases.join() === 'imported')
-    writeFileSync(configPath, config.replace('old.example.test', 'new.example.test'))
+    const updatedConfig = config.replace('old.example.test', 'new.example.test')
+    writeFileSync(configPath, updatedConfig)
     check('the connect action works without background retries and uses the updated SSH config',
       (await call(ROUTES.hostReconnect, { alias: 'imported' })).data.ok === true &&
       connected.join() === 'new.example.test')
+    const edit = {
+      originalAlias: 'imported', fromSshConfig: true, alias: 'imported',
+      host: 'edited.example.test', user: 'deploy', port: 2223, auth: { kind: 'password' },
+    }
+    check('only an already added SSH config alias may be edited through DSH',
+      (await call(ROUTES.hostSave, { ...edit, alias: 'keyed', originalAlias: 'keyed', auth: { kind: 'agent' } })).status === 409)
+    check('an invalid edit leaves the imported reference intact',
+      (await call(ROUTES.hostSave, { ...edit, host: '' })).status === 400 &&
+      store.entry('imported') === undefined && store.entryStore.sshConfigImports().join() === 'imported')
+    await change('keyed', true)
+    check('saving the edit preserves the alias and invalidates its old connection',
+      (await call(ROUTES.hostSave, edit)).data.created === false && forgotten.join() === 'imported')
+    const edited = store.resolve('imported')
+    const editedRow = (await list()).data.hosts.find(row => row.alias === 'imported')
+    check('saved changes appear in the host list and apply to the next connection',
+      editedRow?.source === 'store' && editedRow.host === 'edited.example.test' &&
+      edited.host === 'edited.example.test' && edited.user === 'deploy' && edited.port === 2223)
+    check('an untouched password and the jump chain carry over without exposing the password',
+      edited.auth.password === 'example-secret' && edited.jump.hops[0]?.user === 'ops' &&
+      edited.jump.hops[0]?.port === 2222 && !readFileSync(storePath, 'utf8').includes('example-secret') &&
+      !JSON.stringify(editedRow).includes('example-secret'))
+    check('saving replaces only the affected import and leaves SSH config intact',
+      store.entryStore.sshConfigImports().join() === 'keyed' && readFileSync(configPath, 'utf8') === updatedConfig &&
+      (await call(ROUTES.hostSave, edit)).status === 409)
     writeFileSync(configPath, '')
     check('a stale import is listed by alias and can still be removed',
-      (await list()).data.importedAliases.join() === 'imported' &&
-      (await change('imported', false)).status === 200 &&
+      (await list()).data.importedAliases.join() === 'keyed' &&
+      (await change('keyed', false)).status === 200 &&
       (await list()).data.importedAliases.length === 0 && readFileSync(configPath, 'utf8') === '')
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -6,15 +6,18 @@
 
 ### 新增
 
-- **只把能登录的服务器当主机**：`~/.ssh/config` 是所有 SSH 客户端共用的，里面最常见的一块往往不是机器——`Host github.com` 这类块的全部作用是为 `git push` 绑定密钥（或改用 443 端口）。它合法、能连上，但 GitHub 只接受 `git` 账号、永远不给 shell，于是面板、主机下拉和 `ssh_workspace_hosts` 里多出一行行死路。现在**主机发现**跳过两类块：目标是公开 Git 服务（`github.com` 含 `ssh.github.com` / `gist.github.com`、`gitlab.com`、`bitbucket.org`、`codeberg.org`、`gitee.com`、`git.sr.ht` / `hg.sr.ht`、`ssh.dev.azure.com` / `vs-ssh.visualstudio.com`，以及 `git-codecommit.<region>.amazonaws.com` 这一形状，按**域名边界**匹配，`notgithub.com` 不算），或以 `git` 账号认证。判定读的是**解析后的** host / user，所以 `Host gh` + `HostName github.com` 同样命中。
-- **只过滤发现，不拒绝使用**：`resolve()` 照旧解析被略过的别名，显式点名（挂载 / 执行 / 测试连接）仍然可用；在面板里手动添加的**存储条目**不受过滤——那是明确的意图。
-- **不静默消失，也不点红状态灯**：这类条目落在新的 `ignored` 字段（`{ alias, reason }`），**不并进** `skipped`——「不是候选」不是故障，克隆 GitHub 的用户不该因为一条 Git 配置就看到「需要处理」；`skipped` 仍照旧进诊断报告的状态判定。面板在主机列表下方用一行说明报出数量与出处，`ssh_workspace_hosts` 也返回 `ignored[]`（每项形如 `alias: 原因`）。
-- **逃生开关**：`DSH_SSH_WORKSPACE_SHOW_GIT_HOSTS=1` 整体关掉过滤（宿主启动时读取，改完需重启），用于构建账号真的叫 `git`、或自建 Gitea 以 `git@` 登录之类的情况。
+- **启动 DSH 自动连接「打开过开关」的主机**：主机卡片的连接开关不再只是一次性命令——打开时（`POST /hosts/reconnect`）先把别名写进 `$DSH_HOME/dsh-ssh.json` 的顶层 `autoConnect` 数组再拨号，插件下次激活时在稍后的 tick 上**串行**把这些主机重新连上（单个失败不中断其余、不抛出、失败交给后台重连继续试并记一条诊断事件）。因此「我打开过的主机」在重启后自己回来，而**只是添加了、没打开过**的主机不会被拨号；`~/.ssh/config` 主机同样能记（所以意图存在顶层数组而不是条目字段）。断开（`POST /hosts/disconnect`）**先清意图再拆连接**——写盘失败时请求失败、连接保持原样，不会出现「按钮说断了、下次启动又连回来」；主机改名时意图跟着搬，删除主机 / 从列表移除会一并清掉。
+- **打开过的主机保持连接**：同一份意图登记为引擎的 `addKeepAliveCheck`，既让空闲回收（30 分钟无操作）跳过它——否则自动连回来的连接会被回收，重启恢复等于白做——也让连接意外掉线后后台循环把它当作「还有人要」继续重拨。与条目的 `enabled`（能否创建新工作区）是两件事。
+
+### 移除
+
+- **取消「只导入能登录的服务器」过滤**：`~/.ssh/config` 里能解析的具体 `Host` 块现在**一律列为主机**，包括 `Host github.com` 这类只为 `git push` 绑定密钥的条目——哪些条目值得当远程工作区是用户自己的判断，插件不替用户筛。原先的 `ignored` 桶、面板里那行说明、`DSH_SSH_WORKSPACE_SHOW_GIT_HOSTS` 开关与 `lib/git-endpoint.js` 一并删除；`ssh_workspace_hosts` 不再返回 `ignored[]`，`/hosts` 也不再带该字段。这类块真被拿去挂载时会因没有登录 shell 失败，并在那一步报出原因。
 
 ### 测试
 
-- 新增 `git-endpoint-smoke` 62：判定本身（域名边界——`ssh.github.com` / `altssh.gitlab.com` 命中，而 `notgithub.com` / `github.com.example.org` / `git.example.com` / `my.gitee.company.com` 不命中，因为**藏掉真机器是这个功能唯一不能有的失败**；`git-codecommit.<region>.amazonaws.com` 用形状而不是后缀；大小写与尾点归一；`git` 大小写敏感、`Git` 不算）、`listing()` 的三分（列出 / `skipped` / `ignored`，且 `ignored` 不参与状态判定）、`resolve()` 仍解析被忽略的别名、存储条目豁免、环境变量开关，以及路由与工具把 `ignored` 送出（输出 schema 声明 + 返回值 + 渲染 notes）——否则「为什么 github 不见了」在界面上没有任何答案。
-- `client-shape-smoke` 337 → 339：面板取 `ignored`，并在「列表为空」与「有列表行」两个位置各渲染一行说明。
+- 新增 `host-intent-smoke` 63：存储段（往返、去重、畸形段降级、不可读存储读作空 / 写入响亮失败、改名跟着搬、删除与移除清意图、未打开过开关时不得凭空写出 `autoConnect` 段、长别名的 `~/.ssh/config` 主机同样能开关）、引擎段（keep-alive 主机豁免空闲回收而其它主机照旧被回收、抛错的谓词不能让整轮扫描失效、掉线后 `waiting` 而不是 `gave-up`）、恢复段（串行按序、单飞、单个失败不中断且不抛出、走 `acquire` 而不是会触发隧道恢复的 `retryNow`、失败进诊断环）、路由段（先写意图再拨号、拨号失败保留意图、写意图失败 500 且不拨号、忙时 409 不动意图、两种断开都清意图、移除导入清意图、测试连接不释放打开过的主机）与 `index.js` 的接线。
+- 删除 `git-endpoint-smoke`（62 项）——判定模块没有了，它的测试一并移除。
+- `client-shape-smoke` 330 → 331：两条涉及 `ignored` 的断言改为只钉 `skipped`，并新增一条反向断言，确保面板里不会残留 Git-only 桶的渲染。
 
 ## [0.3.10] - 2026-11-20
 

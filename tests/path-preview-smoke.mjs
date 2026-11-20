@@ -300,9 +300,11 @@ function makePicker ({ factory, dir, rows }) {
  * @param {object} options - the scenario.
  * @param {string} options.name - `DirectoryBrowser` or `RemoteWorkspaceDialog`.
  * @param {object} options.props - the props the owner passes.
+ * @param {object} [options.hostListing] - the SSH host listing fixture.
+ * @param {object[]} [options.connections] - the active connection fixture.
  * @returns {object} the driver.
  */
-function makeDialog ({ name, props }) {
+function makeDialog ({ name, props, hostListing, connections }) {
   const hooks = makeHooks()
   const clock = makeClock()
   const requests = []
@@ -315,7 +317,7 @@ function makeDialog ({ name, props }) {
     backdropDismiss: () => ({}),
     useDialogA11y: () => ({ props: {}, titleId: 'dialog-title', bodyRef: { current: null } }),
     t: (key) => key,
-    API: { ls: '/ls', mount: '/mount', hosts: '/hosts' },
+    API: { ls: '/ls', mount: '/mount', hosts: '/hosts', status: '/status' },
     BROWSE_LIST_LIMIT: 2000,
     FolderIcon: function FolderIcon () {},
     FileIcon: function FileIcon () {},
@@ -326,7 +328,8 @@ function makeDialog ({ name, props }) {
     refreshRemoteWorkspaceMarks: () => {},
     fetchJson: async (url, init) => {
       if (init?.method === 'POST') return { ok: true, workspacePath: 'ssh://box/home/me' }
-      if (url.endsWith('/hosts')) return { hosts: [{ alias: 'box' }, { alias: 'other' }, { alias: 'box2', enabled: false }] }
+      if (url === '/hosts') return hostListing
+      if (url === '/status') return { connections }
       requests.push(url)
       const match = /[?&]path=([^&]*)/u.exec(url)
       const target = match === null ? '/home/me' : decodeURIComponent(match[1])
@@ -341,7 +344,7 @@ function makeDialog ({ name, props }) {
     },
   }
 
-  const parts = [...HELPERS, 'compareListingEntries', 'usePathDraftPreview', name].map(liftFunction)
+  const parts = [...HELPERS, 'compareListingEntries', 'usePathDraftPreview', 'sshHostChoices', name].map(liftFunction)
   // eslint-disable-next-line no-new-func
   const Component = new Function(
     'React', 'setTimeout', 'clearTimeout', 'jsx', 'jsxs', 'PATH_PREVIEW_DEBOUNCE_MS', ...Object.keys(stubs),
@@ -695,6 +698,23 @@ console.log('[the dialogs]')
   const dialog = makeDialog({
     name: 'RemoteWorkspaceDialog',
     props: { t: (key) => key, busy: false, onCancel () {}, onCreated () {} },
+    hostListing: {
+      importedAliases: ['other', 'offline'],
+      hosts: [
+        { alias: 'discovered-only', source: 'ssh-config' },
+        { alias: 'box', source: 'store', enabled: true },
+        { alias: 'other', source: 'ssh-config' },
+        { alias: 'box2', source: 'store', enabled: false },
+        { alias: 'offline', source: 'ssh-config' },
+      ],
+    },
+    connections: [
+      { alias: 'discovered-only', state: 'connected' },
+      { alias: 'box', state: 'connected' },
+      { alias: 'other', state: 'connected' },
+      { alias: 'box2', state: 'connected' },
+      { alias: 'offline', state: 'broken' },
+    ],
   })
   await dialog.settle(4)
   check('the remote chooser resolves the host and its login directory',
@@ -704,8 +724,11 @@ console.log('[the dialogs]')
   check('...with creation allowed on a writable directory',
     dialog.mountButton()?.props.disabled === false, String(dialog.mountButton()?.props.disabled))
   const options = (dialog.find((node) => node.type === 'select')?.props.children ?? []).map(option => option.props.value)
-  check('the host picker offers enabled hosts only',
-    options.includes('box') && options.includes('other') && !options.includes('box2'), options.join())
+  check('the host picker offers only added, connected hosts that allow new workspaces',
+    options.join() === 'box,other', options.join())
+  check('opening the picker does not dial an unadded or disabled host',
+    dialog.requests.length === 1 && new URL(dialog.requests[0], 'http://localhost').searchParams.get('alias') === 'box',
+    dialog.requests.join())
 
   dialog.setDraft('/home/me/pro')
   check('it narrows rows exactly like the browser dialog', dialog.rows().join() === 'projects', dialog.rows().join())
@@ -719,6 +742,23 @@ console.log('[the dialogs]')
   await dialog.settle(4)
   check('...and adopts the new host\'s login directory',
     dialog.input()?.props.value === '/home/me/', String(dialog.input()?.props.value))
+}
+
+for (const [importedAliases, connections, hint] of [
+  [[], [{ alias: 'box', state: 'connected' }], 'remote.noAddedHosts'],
+  [['box'], [], 'remote.noEnabledHosts'],
+]) {
+  const dialog = makeDialog({
+    name: 'RemoteWorkspaceDialog',
+    props: { t: key => key, busy: false, onCancel () {}, onCreated () {} },
+    hostListing: { importedAliases, hosts: [{ alias: 'box', source: 'ssh-config' }] },
+    connections,
+  })
+  await dialog.settle()
+  check(`the host picker explains ${hint} and disables host selection and creation`,
+    dialog.texts().includes(hint) &&
+    dialog.find(node => node.type === 'select').props.disabled === true &&
+    dialog.mountButton().props.disabled === true && dialog.requests.length === 0)
 }
 
 // ---- the negative control ----------------------------------------------------

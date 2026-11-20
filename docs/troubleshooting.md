@@ -58,10 +58,10 @@ Windows 把它当驱动器相对路径拼到进程 cwd 上，自然 ENOENT。这
 
 ```
 cannot access "ssh://myserver/home/user/project/src/app.ts": the remote workspace is detached
-(re-enable it in the panel or with ssh_workspace_enable)
+(re-enable it with ssh_workspace_enable)
 ```
 
-恢复方式：面板点该行的「启用」，或调 `ssh_workspace_enable`（默认同时把归档的会话恢复出来）。
+可用 `ssh_workspace_enable` 重新挂载（默认同时把归档的会话恢复出来）。
 只有 SSH 连接本身（`test`、目录浏览、端口转发）不受停用影响——这也是为什么「测试连接」还能成功却什么都读写不了：
 连接活着，围栏关着。代码是 `FS_PERMISSION_DENIED`（不是 `FS_SANDBOX_DENIED`）：停用不是沙箱策略，
 升权也解不开一个被关掉的工作区。
@@ -87,7 +87,7 @@ danger-full-access」。读（`read` / `glob` / `grep`）不受影响。
 | `[sandbox: … under read-only mode]` | 会话模式是仅可查看 | 切到 `workspace-write` / `danger-full-access`，或对单次调用升权 |
 | `cannot run a remote command …: the session sandbox mode is "read-only"` | 同上，但目标是命令而非文件 | 切换会话模式；升级对这条不起作用，插件工具没有 `sandbox_permissions` 字段 |
 | `FS_OUTSIDE_WORKSPACE` + `outside every mounted remote workspace` | 目标不在任何已挂载根下（也不在该主机 `/tmp` 下） | 先 `ssh_workspace_mount`；**升权没有用**，模式再宽也不会让目录变成已挂载 |
-| `FS_PERMISSION_DENIED` + `the remote workspace is detached` | 工作区被停用 | 面板「启用」或 `ssh_workspace_enable` |
+| `FS_PERMISSION_DENIED` + `the remote workspace is detached` | 工作区被停用 | `ssh_workspace_enable` |
 
 > 这三种失败过去都返回 `FS_SANDBOX_DENIED`，而宿主的工具层会把该码改写成
 > `[sandbox: file access denied under <mode> mode]` 加一句「可升权重试」。于是围栏外写文件会得到
@@ -386,6 +386,13 @@ exporter，`debug` 又被默认级别丢弃），见 [development.md](./developm
 | `重连已停止` + 红字原因 | 已放弃：不可恢复的配置问题（别名不存在、私钥读不到、主机密钥不匹配），或这个主机已经没有消费者了 | 按红字修配置，再点「立即重连」 |
 | `已断开` | 有连接记录但没人在重试——通常是主动断开，或该主机没有被任何东西使用 | 点「立即重连」，或打开该主机下的工作区 |
 
+**重启 DSH 后哪些主机会自己连上？** 只有**打开过连接开关**的：打开开关会把别名写进
+`dsh-ssh.json` 的 `autoConnect`，插件启动时按它串行重连；只是添加了、没打开过开关的主机
+不会被拨号（这与条目的「允许创建工作区」是两件事）。如果重启后某台主机仍是断开状态：
+确认它上一次是「断开」而不是仅仅没连上（断开就取消了意图）、确认 `dsh-ssh.json` 里
+`autoConnect` 有它、以及它是否在启动时不可达（失败会进诊断环并交给后台重连；配置级错误
+如未知别名 / 主机密钥不匹配会 `重连已停止`）。把开关打开一次即可重新登记。
+
 两条刻意的设计，看到时不要当成 bug：
 
 - **没有消费者的主机不会被拨号**：卸载了该主机最后一个工作区、也没有「开启」状态的保存转发时，后台循环会停——
@@ -415,8 +422,9 @@ exporter，`debug` 又被默认级别丢弃），见 [development.md](./developm
 - **终端的 shell 偏好是全局单值**：浏览器的 `dsh.terminal.shell` 只记一个路径，不区分主机。在两台路径布局不同的主机之间切换时，偏好里那个路径在另一台上不存在，菜单会回落到那台主机发现列表的第一项（通常是它的登录 shell）——这是宿主的行为，不是插件缺陷。另外，「新建终端」菜单列的是**该主机上真的存在**的 shell；主机不可达时菜单显示 failed 并可重试，**不会**退回成本机列表（那会让人以为选中的 shell 真在远端跑）。没选 shell 直接开终端时，宿主给的 `shellPath` 来自本机 `resolveShell`；插件按**家族**把它换成该主机发现到的那一支（本机默认 bash → 远端 bash），主机没有这个家族时才回落 `sh -l`——所以「不选直接开」用的是同家族的 shell，而不是远端自己的默认登录 shell。最后一条：那份 shell 清单**只在重连时重探**，既没有 TTL 也没有手动刷新入口——在一条一直不断的连接上给主机新装了 shell，菜单里看不到，重连一次或重启 DSH 即可。
 - **不支持 jump host / ProxyCommand**：见上节。
 - **后台重连有上限，且需要「有人在用」**：重试间隔从 1 秒指数增长到 60 秒封顶，默认不限次数，
-  但只在还有消费者时进行（已挂载工作区、已保存且开启的转发）。进程退出后没有后台循环，重启 DSH
-  才会重新连接。策略可用插件配置 `engine.reconnect` 调整（见根 README 的配置表），
+  但只在还有消费者时进行（已挂载工作区、已保存且开启的转发、**连接开关打开过的主机**）。
+  进程退出后没有后台循环，重启 DSH 时插件会把开关打开过的主机重新连上（见上节），
+  其余主机等到下一次操作。策略可用插件配置 `engine.reconnect` 调整（见根 README 的配置表），
   设 `engine.reconnect: false` 可退回「只在操作时重连一次」的旧行为。
 - **原子写的降级**：远端写入采用「同目录暂存文件 + rename 原子替换」。当 SFTP 服务端未广告 `posix-rename@openssh.com` 扩展时，先删除目标再重命名，存在极小的非原子窗口——写入内容不会损坏，但极短时间窗内该路径可能短暂不存在。
 - **重启后需重新插上插头**：已登记（register）的 `ssh://` 工作区在重启后自动重新挂载（见 [architecture.md](./architecture.md) 的「工作区登记」）；但如果注册表记录已被清理而挂载仅存在于内存，需重新 `ssh_workspace_mount`。
