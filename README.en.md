@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/siqyka/dsh-ssh-workspace/main/docs/assets/header.png" alt="dsh-ssh-workspace header" width="640" />
+<img src="https://raw.githubusercontent.com/InitializeQwQ/dsh-ssh-workspace/main/docs/assets/header.png" alt="dsh-ssh-workspace header" width="640" />
 
 # dsh-ssh-workspace
 
@@ -9,13 +9,15 @@
 `read` / `write` / `edit` go straight over SFTP to read and write remote files —
 no manual sync, no mount driver, no third-party filesystem.
 
-[![version](https://img.shields.io/github/package-json/v/siqyka/dsh-ssh-workspace)](https://github.com/siqyka/dsh-ssh-workspace)
-[![license](https://img.shields.io/github/license/siqyka/dsh-ssh-workspace)](https://github.com/siqyka/dsh-ssh-workspace/blob/main/LICENSE)
+[![version](https://img.shields.io/github/package-json/v/InitializeQwQ/dsh-ssh-workspace)](https://github.com/InitializeQwQ/dsh-ssh-workspace)
+[![license](https://img.shields.io/github/license/InitializeQwQ/dsh-ssh-workspace)](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/LICENSE)
 ![node](https://img.shields.io/badge/node-%3E%3D%2020-brightgreen)
 ![dsh](https://img.shields.io/badge/DSH-%3E%3D%200.2.0--rc.1-blue)
 ![ssh2](https://img.shields.io/badge/ssh2-%5E1.17.0-lightgrey)
 
-[简体中文](https://github.com/siqyka/dsh-ssh-workspace/blob/main/README.md) · **English**
+[简体中文](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/README.md) · **English**
+
+*This repository is a fork of [siqyka/dsh-ssh-workspace](https://github.com/siqyka/dsh-ssh-workspace). It is **not published to npm**; install it from this repository's URL (see Quick start).*
 
 </div>
 
@@ -105,16 +107,11 @@ same error semantics.
 
 1. **Install**: open the official desktop client and go to the **Plugins** page under
    **Settings** (or the plugins entry in the left navigation bar);
-2. **Enter the source**: in the plugin manager's install field, use either of these and
-   click Install:
-   - **npm package** (distributed via npm, version pinning supported):
-     `@shiqyka/dsh-ssh-workspace`, or pin a version
-     `@shiqyka/dsh-ssh-workspace@0.2.8`
-     ([npm page](https://www.npmjs.com/package/@shiqyka/dsh-ssh-workspace));
-   - **repository address** (latest code from Git):
-     `https://github.com/siqyka/dsh-ssh-workspace`
-     (the plugin manager installs its dependencies for you; only a manual clone
-     linked into a profile needs the next section)
+2. **Enter the source**: this plugin is **not published to npm**. Paste this repository's
+   URL into the plugin manager's install field and install:
+   `https://github.com/InitializeQwQ/dsh-ssh-workspace`
+   (the plugin manager installs its dependencies such as `ssh2` for you; for hacking on
+   the source or an offline install, see the next section)
 3. **Restart**: restart the client once installation finishes, and you're ready to go.
 
 From there:
@@ -133,12 +130,15 @@ all land on the remote host automatically
 ### Using a source checkout
 
 ```bash
-git clone https://github.com/siqyka/dsh-ssh-workspace.git
+git clone https://github.com/InitializeQwQ/dsh-ssh-workspace.git
 cd dsh-ssh-workspace
 npm ci          # ssh2 is a direct dependency and does not arrive with a clone
 ```
 
-Then restart the client.
+Then point the DSH profile at this checkout — the dependency name is still the package
+name `@shiqyka/dsh-ssh-workspace`; either `link:` this directory or `npm pack` and use
+`file:` — and restart the host. The exact steps are in
+[development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md).
 
 ## Host management
 
@@ -156,7 +156,7 @@ blank while editing keeps the current value. Deleting a
 host does not automatically unmount its mounted workspaces, but those workspaces
 become inaccessible since the host no longer exists.
 
-> See [docs/hosts.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/hosts.md) for the storage format, `~/.ssh/config` parsing
+> See [docs/hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md) for the storage format, `~/.ssh/config` parsing
 > rules, and the credential policy.
 
 ## Configuration
@@ -273,7 +273,7 @@ malfunction. With `allowLan: true`:
   surrounding whitespace insensitive, with or without a port);
 - the JSON content-type check on POST and the 405/415 handling are unchanged.
 
-See [SECURITY.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/SECURITY.md) for the full security discussion.
+See [SECURITY.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/SECURITY.md) for the full security discussion.
 
 ## Agent tools
 
@@ -290,11 +290,11 @@ See [SECURITY.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/SECURITY
 | `ssh_workspace_forward` | Map a remote port to this machine and return an openable URL |
 | `ssh_workspace_unforward` | Close a port mapping and release the local port |
 
-> For tool parameters, return fields, and error semantics, see [docs/tools.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/tools.md).
+> For tool parameters, return fields, and error semantics, see [docs/tools.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/tools.md).
 
 ## Capabilities
 
-> The complete inventory by domain (dependencies, degradation, limits included) is in [docs/features.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/features.md).
+> The complete inventory by domain (dependencies, degradation, limits included) is in [docs/features.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/features.md).
 
 ### Remote files
 
@@ -436,21 +436,21 @@ Explicitly **not supported**:
 
 | Doc | Contents |
 | --- | --- |
-| [features.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/features.md) | **Feature reference**: the complete capability inventory by domain (workspaces / files / execution / transfer / forwarding / UI / security / config / degradation matrix / limits) |
-| [architecture.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/architecture.md) | Architecture & implementation: the `ctx.fs` / `ctx.shell` / `ctx.subprocess` takeovers, change watching & streaming, built-in bridges, engine & connection model |
-| [protocol.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/protocol.md) | The `ssh://` path protocol: syntax, normalization, display rules, `file:` URIs, the write fence and the detached fence |
-| [hosts.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/hosts.md) | Host configuration & auth: storage format, `~/.ssh/config` fallback, panel management |
-| [tools.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/tools.md) | Agent tool reference: the 11 `ssh_workspace_*` tools (including `reverse_forward`) |
-| [ui.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/ui.md) | UI guide: the panel, the dual "Add workspace" entry, remote-workspace marks, the port-forward and persistent-shell sections, the file-reference section |
-| [forward-persistence.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/forward-persistence.md) | Port-forward persistence: intent vs. fact, the two disconnect paths agreeing, auto-start |
-| [development.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/development.md) | Development, debugging & release: source layout, dependency resolution, packaging |
-| [upstream-workarounds.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/upstream-workarounds.md) | Upstream workaround register: host defects, the one-line fix, the self-retiring signal, and the removal steps |
-| [upstream-workaround-pattern.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/upstream-workaround-pattern.md) | **The retirement pattern for upstream workarounds**: when it applies, the seven pieces, tri-state probing, a reachable notification channel, anti-patterns, and its cost boundary |
-| [troubleshooting.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/troubleshooting.md) | Troubleshooting & FAQ: error semantics, connection issues, known limitations |
-| [optimization-and-future03.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/optimization-and-future03.md) | **Optimization items & future work (volume 3, the single ledger)**: what is still open, explicit non-goals, upstream blockers, verification gaps, and an index of closed IDs; volumes 1 and 2 were merged here |
-| [CONTRIBUTING.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/CONTRIBUTING.md) | Contributing: environment, the three test tiers, code conventions, before you ship |
-| [SECURITY.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/SECURITY.md) | Security policy: how credentials are stored, host-key verification, known boundaries, reporting |
-| [CHANGELOG.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/CHANGELOG.md) | Changelog: additions, fixes and changes per version |
+| [features.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/features.md) | **Feature reference**: the complete capability inventory by domain (workspaces / files / execution / transfer / forwarding / UI / security / config / degradation matrix / limits) |
+| [architecture.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/architecture.md) | Architecture & implementation: the `ctx.fs` / `ctx.shell` / `ctx.subprocess` takeovers, change watching & streaming, built-in bridges, engine & connection model |
+| [protocol.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/protocol.md) | The `ssh://` path protocol: syntax, normalization, display rules, `file:` URIs, the write fence and the detached fence |
+| [hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md) | Host configuration & auth: storage format, `~/.ssh/config` fallback, panel management |
+| [tools.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/tools.md) | Agent tool reference: the 11 `ssh_workspace_*` tools (including `reverse_forward`) |
+| [ui.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/ui.md) | UI guide: the panel, the dual "Add workspace" entry, remote-workspace marks, the port-forward and persistent-shell sections, the file-reference section |
+| [forward-persistence.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/forward-persistence.md) | Port-forward persistence: intent vs. fact, the two disconnect paths agreeing, auto-start |
+| [development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md) | Development, debugging & release: source layout, dependency resolution, packaging |
+| [upstream-workarounds.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/upstream-workarounds.md) | Upstream workaround register: host defects, the one-line fix, the self-retiring signal, and the removal steps |
+| [upstream-workaround-pattern.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/upstream-workaround-pattern.md) | **The retirement pattern for upstream workarounds**: when it applies, the seven pieces, tri-state probing, a reachable notification channel, anti-patterns, and its cost boundary |
+| [troubleshooting.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/troubleshooting.md) | Troubleshooting & FAQ: error semantics, connection issues, known limitations |
+| [optimization-and-future03.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/optimization-and-future03.md) | **Optimization items & future work (volume 3, the single ledger)**: what is still open, explicit non-goals, upstream blockers, verification gaps, and an index of closed IDs; volumes 1 and 2 were merged here |
+| [CONTRIBUTING.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/CONTRIBUTING.md) | Contributing: environment, the three test tiers, code conventions, before you ship |
+| [SECURITY.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/SECURITY.md) | Security policy: how credentials are stored, host-key verification, known boundaries, reporting |
+| [CHANGELOG.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/CHANGELOG.md) | Changelog: additions, fixes and changes per version |
 
 ---
 
@@ -458,7 +458,7 @@ Explicitly **not supported**:
 
 <div align="center">
 
-**[MIT](https://github.com/siqyka/dsh-ssh-workspace/blob/main/LICENSE) © 2026 siqyka**
+**[MIT](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/LICENSE) © 2026 siqyka**
 
 <sub>SSH distance, local feel.</sub>
 

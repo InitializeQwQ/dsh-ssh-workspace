@@ -21,7 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const REPO = 'https://github.com/siqyka/dsh-ssh-workspace/blob/main/'
+const REPO = 'https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/'
 
 const files = []
 ;(function walk (dir) {

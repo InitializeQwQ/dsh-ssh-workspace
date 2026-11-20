@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://raw.githubusercontent.com/siqyka/dsh-ssh-workspace/main/docs/assets/header.png" alt="dsh-ssh-workspace header" width="840" />
+<img src="https://raw.githubusercontent.com/InitializeQwQ/dsh-ssh-workspace/main/docs/assets/header.png" alt="dsh-ssh-workspace header" width="840" />
 
 # dsh-ssh-workspace
 
@@ -8,13 +8,15 @@
 `read` / `write` / `edit` 通过 SFTP 直接读写远端文件——
 不需要手动同步、不需要挂载驱动、不需要装任何第三方文件系统。
 
-[![version](https://img.shields.io/github/package-json/v/siqyka/dsh-ssh-workspace)](https://github.com/siqyka/dsh-ssh-workspace)
-[![license](https://img.shields.io/github/license/siqyka/dsh-ssh-workspace)](https://github.com/siqyka/dsh-ssh-workspace/blob/main/LICENSE)
+[![version](https://img.shields.io/github/package-json/v/InitializeQwQ/dsh-ssh-workspace)](https://github.com/InitializeQwQ/dsh-ssh-workspace)
+[![license](https://img.shields.io/github/license/InitializeQwQ/dsh-ssh-workspace)](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/LICENSE)
 ![node](https://img.shields.io/badge/node-%3E%3D%2020-brightgreen)
 ![dsh](https://img.shields.io/badge/DSH-%3E%3D%200.2.0--rc.1-blue)
 ![ssh2](https://img.shields.io/badge/ssh2-%5E1.17.0-lightgrey)
 
-**简体中文** · [English](https://github.com/siqyka/dsh-ssh-workspace/blob/main/README.en.md)
+**简体中文** · [English](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/README.en.md)
+
+*本仓库是 [siqyka/dsh-ssh-workspace](https://github.com/siqyka/dsh-ssh-workspace) 的 fork，未发布到 npm；安装请使用本仓库的地址（见下方「快速开始」）。*
 
 </div>
 
@@ -99,14 +101,9 @@ DSH 的所有文件操作都走 `ctx.fs`（`@deepseek-ai/dsh-fs`）这一个服�
 ## 快速开始
 
 1. **安装**：打开官方桌面客户端，进入「设置」中的「插件」页面（或左侧导航栏的插件入口）；
-2. **输入来源**：在插件管理界面的安装输入框中二选一，点击安装：
-   - **npm 包**（走 npm 分发，支持锁定版本）：
-     `@shiqyka/dsh-ssh-workspace`，或指定版本
-     `@shiqyka/dsh-ssh-workspace@0.2.8`
-     （[npm 页面](https://www.npmjs.com/package/@shiqyka/dsh-ssh-workspace)）；
-   - **仓库地址**（从 Git 取最新代码）：
-     `https://github.com/siqyka/dsh-ssh-workspace`
-     （这种方式由插件管理器代为安装依赖；手动 clone 后 link 进 profile 才需要看下一节）
+2. **输入来源**：本插件**没有发布到 npm**。在插件管理界面的安装输入框里填本仓库地址并安装：
+   `https://github.com/InitializeQwQ/dsh-ssh-workspace`
+   （由插件管理器代为安装 `ssh2` 等依赖；需要改代码或离线安装时见下一节）
 3. **重启**：安装完成后重启客户端，即可开始使用。
 
 之后的使用流程：
@@ -124,12 +121,14 @@ DSH 的所有文件操作都走 `ctx.fs`（`@deepseek-ai/dsh-fs`）这一个服�
 ### 从源码仓库使用
 
 ```bash
-git clone https://github.com/siqyka/dsh-ssh-workspace.git
+git clone https://github.com/InitializeQwQ/dsh-ssh-workspace.git
 cd dsh-ssh-workspace
 npm ci          # ssh2 是直接依赖，不随 clone 到位
 ```
 
-装完重启客户端即可。
+然后把 profile 指向本目录（依赖名仍是包名 `@shiqyka/dsh-ssh-workspace`，用 `link:`
+指向本目录，或 `npm pack` 后写 `file:`），重启宿主即可。具体步骤见
+[development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md)。
 
 ## 主机管理
 
@@ -144,7 +143,7 @@ npm ci          # ssh2 是直接依赖，不随 clone 到位
 且不会回传到浏览器，编辑时留空表示保持原值。
 删除主机不会自动卸载已挂载的工作区，但那些工作区会因主机不存在而无法访问。
 
-> 存储格式、`~/.ssh/config` 解析规则与凭据策略细节见 [docs/hosts.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/hosts.md)。
+> 存储格式、`~/.ssh/config` 解析规则与凭据策略细节见 [docs/hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md)。
 
 ## 配置
 
@@ -238,7 +237,7 @@ localPassthrough:
   `allowedHosts`（大小写与首尾空白不敏感，可带端口也可不带）；
 - POST 的 JSON content-type 校验、405/415 等其余防护不变。
 
-安全语义的完整说明见 [SECURITY.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/SECURITY.md)。
+安全语义的完整说明见 [SECURITY.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/SECURITY.md)。
 
 ## Agent 工具
 
@@ -255,11 +254,11 @@ localPassthrough:
 | `ssh_workspace_forward` | 把远端端口映射到本机，返回可打开的 URL |
 | `ssh_workspace_unforward` | 关闭端口映射并释放本地端口 |
 
-> 工具的参数、返回字段与错误语义详见 [docs/tools.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/tools.md)。
+> 工具的参数、返回字段与错误语义详见 [docs/tools.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/tools.md)。
 
 ## 能力一览
 
-> 完整的按域清单（含依赖、降级与边界）见 [docs/features.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/features.md)。
+> 完整的按域清单（含依赖、降级与边界）见 [docs/features.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/features.md)。
 
 ### 远端文件
 
@@ -385,21 +384,21 @@ exec 通道；空闲 30 分钟回收（有操作在飞的连接不回收）。
 
 | 文档 | 内容 |
 | --- | --- |
-| [features.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/features.md) | **功能说明**：按能力域列出的完整功能清单（工作区 / 文件 / 执行 / 传输 / 转发 / 界面 / 安全 / 配置 / 降级矩阵 / 边界） |
-| [architecture.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/architecture.md) | 架构与实现：`ctx.fs` / `ctx.shell` / `ctx.subprocess` 接管、变更监视与流式读取、内建桥接、引擎与连接模型 |
-| [protocol.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/protocol.md) | `ssh://` 路径协议：语法、规范化、显示规则、`file:` URI、写入围栏与停用围栏 |
-| [hosts.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/hosts.md) | 主机配置与认证：存储格式、`~/.ssh/config` 回退、面板管理 |
-| [tools.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/tools.md) | Agent 工具参考：11 个 `ssh_workspace_*` 工具（含 `reverse_forward`） |
-| [ui.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/ui.md) | 界面指南：面板、添加工作区双入口、远程工作区标记、端口转发与持久会话区、文件引用设置 |
-| [forward-persistence.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/forward-persistence.md) | 端口转发持久化：意图与事实的分离、两条断开路径的一致性、自动开启 |
-| [development.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/development.md) | 开发、调试与发布：源码结构、依赖解析、打包流程 |
-| [upstream-workarounds.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/upstream-workarounds.md) | 上游临时补丁登记：宿主缺陷、一行修法、自动退役信号与删除步骤 |
-| [upstream-workaround-pattern.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/upstream-workaround-pattern.md) | **上游补丁的退役模式**：可复用的方法——适用判定、七件套、三态探测、可达的信号通道、反模式与成本边界 |
-| [troubleshooting.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/troubleshooting.md) | 排查与常见问题：错误语义、连接问题、已知限制 |
-| [optimization-and-future03.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/docs/optimization-and-future03.md) | **优化项与 Future（第三辑 · 唯一账本）**：仍未做、判定不做、上游阻塞、验证缺口与已完成 ID 索引；前两辑已合并到这里 |
-| [CONTRIBUTING.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/CONTRIBUTING.md) | 参与开发：环境、三种测试、代码约定、改完之后 |
-| [SECURITY.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/SECURITY.md) | 安全策略：凭据如何存储、主机密钥校验、已知边界、漏洞报告 |
-| [CHANGELOG.md](https://github.com/siqyka/dsh-ssh-workspace/blob/main/CHANGELOG.md) | 更新日志：各版本的新增、修复与变更 |
+| [features.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/features.md) | **功能说明**：按能力域列出的完整功能清单（工作区 / 文件 / 执行 / 传输 / 转发 / 界面 / 安全 / 配置 / 降级矩阵 / 边界） |
+| [architecture.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/architecture.md) | 架构与实现：`ctx.fs` / `ctx.shell` / `ctx.subprocess` 接管、变更监视与流式读取、内建桥接、引擎与连接模型 |
+| [protocol.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/protocol.md) | `ssh://` 路径协议：语法、规范化、显示规则、`file:` URI、写入围栏与停用围栏 |
+| [hosts.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/hosts.md) | 主机配置与认证：存储格式、`~/.ssh/config` 回退、面板管理 |
+| [tools.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/tools.md) | Agent 工具参考：11 个 `ssh_workspace_*` 工具（含 `reverse_forward`） |
+| [ui.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/ui.md) | 界面指南：面板、添加工作区双入口、远程工作区标记、端口转发与持久会话区、文件引用设置 |
+| [forward-persistence.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/forward-persistence.md) | 端口转发持久化：意图与事实的分离、两条断开路径的一致性、自动开启 |
+| [development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md) | 开发、调试与发布：源码结构、依赖解析、打包流程 |
+| [upstream-workarounds.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/upstream-workarounds.md) | 上游临时补丁登记：宿主缺陷、一行修法、自动退役信号与删除步骤 |
+| [upstream-workaround-pattern.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/upstream-workaround-pattern.md) | **上游补丁的退役模式**：可复用的方法——适用判定、七件套、三态探测、可达的信号通道、反模式与成本边界 |
+| [troubleshooting.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/troubleshooting.md) | 排查与常见问题：错误语义、连接问题、已知限制 |
+| [optimization-and-future03.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/optimization-and-future03.md) | **优化项与 Future（第三辑 · 唯一账本）**：仍未做、判定不做、上游阻塞、验证缺口与已完成 ID 索引；前两辑已合并到这里 |
+| [CONTRIBUTING.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/CONTRIBUTING.md) | 参与开发：环境、三种测试、代码约定、改完之后 |
+| [SECURITY.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/SECURITY.md) | 安全策略：凭据如何存储、主机密钥校验、已知边界、漏洞报告 |
+| [CHANGELOG.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/CHANGELOG.md) | 更新日志：各版本的新增、修复与变更 |
 
 ---
 
@@ -407,7 +406,7 @@ exec 通道；空闲 30 分钟回收（有操作在飞的连接不回收）。
 
 <div align="center">
 
-**[MIT](https://github.com/siqyka/dsh-ssh-workspace/blob/main/LICENSE) © 2026 siqyka**
+**[MIT](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/LICENSE) © 2026 siqyka**
 
 <sub>用 SSH 的距离，换来本地的手感。</sub>
 
