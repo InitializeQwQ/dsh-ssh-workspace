@@ -1958,6 +1958,64 @@ async function postChunk (route, body, chunks = []) {
   }
 }
 
+// --- config imports persist aliases and continue to use the live SSH config ---
+{
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+  const { HostConfigStore } = await import('../lib/store.js')
+  const { HostStore } = await import('../lib/hosts.js')
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-routes-import-'))
+  try {
+    const configPath = path.join(dir, 'config')
+    const storePath = path.join(dir, 'dsh-ssh.json')
+    const config = 'Host imported\n  HostName old.example.test\n  Password example-secret\nHost blocked\n  ProxyCommand false\n'
+    writeFileSync(configPath, config)
+    const store = new HostStore(configPath, new HostConfigStore(storePath))
+    const connected = []
+    const importRoutes = makeRoutes({
+      engine: { store, async acquire (alias) { connected.push(store.resolve(alias).host) } },
+      ctx: { get: () => undefined },
+    })
+    const call = async (routePath, body) => {
+      const { res, state } = fakeRes()
+      await importRoutes.find(route => route.path === routePath).handler(fakeReq({
+        url: routePath, method: body === undefined ? 'GET' : 'POST', body,
+        headers: { host: 'localhost:4074', 'content-type': 'application/json' },
+      }), res)
+      return { status: state.status, data: JSON.parse(state.body) }
+    }
+    const list = () => call(ROUTES.hosts)
+    const change = (alias, imported) => call(ROUTES.hostImport, { alias, imported })
+
+    const before = await list()
+    check('an SSH config host is discoverable before import with no secret in the response',
+      before.data.hosts.some(row => row.alias === 'imported' && row.source === 'ssh-config') &&
+      before.data.importedAliases.length === 0 && !JSON.stringify(before.data).includes('example-secret'))
+    check('import rejects an unsupported or nonexistent host',
+      (await change('blocked', true)).status === 409 && (await change('unknown', true)).status === 409)
+    check('import membership is explicit', (await change('imported')).status === 400)
+    check('import succeeds and repeated requests are idempotent',
+      (await change('imported', true)).status === 200 && (await change('imported', true)).status === 200)
+    const saved = JSON.parse(readFileSync(storePath, 'utf8'))
+    check('import saves only the alias and leaves SSH config intact',
+      saved.sshConfigImports.join() === 'imported' && saved.hosts.length === 0 &&
+      saved.secrets === undefined && readFileSync(configPath, 'utf8') === config)
+    check('membership survives a fresh store read and is returned to the client',
+      new HostConfigStore(storePath).sshConfigImports().join() === 'imported' &&
+      (await list()).data.importedAliases.join() === 'imported')
+    writeFileSync(configPath, config.replace('old.example.test', 'new.example.test'))
+    check('the connect action works without background retries and uses the updated SSH config',
+      (await call(ROUTES.hostReconnect, { alias: 'imported' })).data.ok === true &&
+      connected.join() === 'new.example.test')
+    writeFileSync(configPath, '')
+    check('a stale import is listed by alias and can still be removed',
+      (await list()).data.importedAliases.join() === 'imported' &&
+      (await change('imported', false)).status === 200 &&
+      (await list()).data.importedAliases.length === 0 && readFileSync(configPath, 'utf8') === '')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 // --- the error contract: a failure is a status, not a 200 with ok:false ---
 //
 // The route family used to answer almost every business failure with

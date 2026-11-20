@@ -152,7 +152,7 @@ if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel
     'an unconditional overflow-y reserves a gutter on lists that never scroll')
   check('overflow scrolls only once capped', /\.sshwsp-cap-scroll \{[^}]*overflow-y: auto/.test(client))
   check('capped rows drop their own bottom margin (flex does not collapse it)',
-    /\.sshwsp-cap > \.sshwsp-card, \.sshwsp-cap > \.sshwsp-mount \{ margin-bottom: 0; \}/.test(client))
+    /\.sshwsp-cap > \.sshwsp-mount \{ margin-bottom: 0; \}/.test(client))
 }
 
 console.log('\n[stylesheet covers the classes the bundle renders]')
@@ -601,33 +601,14 @@ console.log('\n[a11y: the menu contract]')
 {
   const source = readFileSync(path.join(packageRoot, clientRel), 'utf8')
   check('the panel keeps the listing gaps from the hosts response',
-    /setListingGaps\(\{ skipped: hostsData\.skipped \?\? \[\], ignored: hostsData\.ignored \?\? \[\], storeError: hostsData\.storeError \}\)/u.test(source),
-    'the response gaps are dropped')
-  check('an unreadable store gets its own sentence, not the empty-state one',
-    /listingGaps\.storeError !== undefined \? t\('panel\.storeError'\) : t\('panel\.empty'\)/u.test(source),
-    'store failure rendered as "empty"')
-  check('the store error itself is shown, not just announced',
-    /children: String\(listingGaps\.storeError\)/u.test(source), 'the reason is not displayed')
-  check('skipped entries are counted in the panel',
-    /t\('panel\.skipped'\)\.replace\('\{n\}', String\(listingGaps\.skipped\.length\)\)/u.test(source),
-    'skipped entries invisible')
-  // Git transport bindings are a THIRD outcome: not listed, not broken. They
-  // must be counted on screen as well, or "my github block vanished" has no
-  // answer anywhere the user can see.
-  check('Git-only entries that were left out are counted too',
-    /t\('panel\.ignored'\)\.replace\('\{n\}', String\(listingGaps\.ignored\.length\)\)/u.test(source),
-    'ignored entries invisible')
-  check('the Git-only note is rendered at both listing sites',
-    (source.match(/listingGaps\.ignored\.length > 0 &&/gu) ?? []).length === 2,
-    `${(source.match(/listingGaps\.ignored\.length > 0 &&/gu) ?? []).length} render site(s)`)
-  // Gaps must survive a PARTIAL listing too: a host that exists but cannot be
-  // used is exactly the one the user is looking for, and it used to disappear
-  // because the rows that did load rendered over it.
-  check('gaps are shown alongside rows, not only when the list is empty',
-    (source.match(/listingGaps\.skipped\.length > 0 &&/gu) ?? []).length === 2,
-    `${(source.match(/listingGaps\.skipped\.length > 0 &&/gu) ?? []).length} render site(s)`)
-  check('the empty-state detail has its own style',
-    /\.sshwsp-empty-detail \{/u.test(source), 'no style for the detail line')
+    /setListingGaps\(\{ skipped: data\.skipped \?\? \[\], ignored: data\.ignored \?\? \[\], storeError: data\.storeError \}\)/u.test(source))
+  check('an unreadable store gets its own sentence and displays the reason',
+    /listingGaps\.storeError === undefined \? 'panel\.empty' : 'panel\.storeError'/u.test(source) &&
+      /children: connections\.length > 0 [^\n]+ : listingGaps\.storeError/u.test(source))
+  check('the shared listing notes report skipped and ignored counts regardless of the row count',
+    /className: 'sshwsp-listing-notes'[\s\S]{0,800}t\('panel\.skipped', \{ n: listingGaps\.skipped\.length \}\)[\s\S]{0,200}t\('panel\.ignored', \{ n: listingGaps\.ignored\.length \}\)/u.test(source))
+  check('the listing notes have their own style', /\.sshwsp-listing-notes \{/u.test(source))
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1377,7 +1358,7 @@ console.log('\n[provenance] the panel admits how old the cached sections are')
   // with `false &&` left it green while the panel showed nothing. Requiring the
   // call to sit inside the returned tree is what makes it a rendering claim.
   check('and the panel calls it from the rendered tree',
-    /jsxs\('div', \{ className: 'sshwsp',[\s\S]{0,3000}?provenanceText\(t, status\.provenance/.test(source),
+    isLive(source, /provenanceText\(t, status\.provenance\?\.capabilities\) !== undefined && jsx\(/u),
     'no reachable call site')
   check('the call is not guarded by a constant',
     !/false && jsx\('div'[\s\S]{0,80}provenance/u.test(source), 'guarded by `false &&`')
@@ -1751,8 +1732,8 @@ console.log('\n[the file-reference zone: two titles, and they are not interchang
     })(),
     'the subheading renders above the zone it belongs to')
   check('the h4 is styled one level down from the h3',
-    /\.sshwsp h4 \{ font-size: 12px; font-weight: 400; margin: 0 0 10px;/u.test(source) &&
-      /\.sshwsp h3 \{ font-size: 12px; font-weight: 500;/u.test(source),
+    /\.sshwsp-page h4 \{ font-size: 13px; font-weight: 500; margin: 0 0 10px;/u.test(source) &&
+      /\.sshwsp-page h3 \{ font-size: 14px; font-weight: 600;/u.test(source),
     'no lighter h4 rule — the subheading looks identical to the zone head, or is unstyled')
   check('the scheme box keeps its own accessible name',
     source.includes("'aria-label': t('passthrough.scheme')") &&

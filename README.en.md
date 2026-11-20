@@ -157,10 +157,10 @@ Host records live in `$DSH_HOME/dsh-ssh.json`; when that file is absent, the plu
 falls back to concrete `Host` blocks in `~/.ssh/config`. So **hosts you have already
 configured need no re-entry**.
 
-The "Remote Workspaces" panel can **add / edit / delete** hosts directly, writing back
-to `$DSH_HOME/dsh-ssh.json` (atomic writes; fields the plugin doesn't recognize are
-preserved). Hosts from `~/.ssh/config` are a **read-only fallback** — the panel never
-modifies that file; when the same name exists in both, the store wins. A block that is
+In Remote Workspaces, choose **Add** and select a host from `~/.ssh/config`.
+The plugin saves the alias in `$DSH_HOME/dsh-ssh.json` and reads the connection
+settings from SSH config. Choose **Set up manually** to create a host directly,
+then use the host’s details to edit or delete it. When the same name exists in both, the store wins. A block that is
 **not a machine** is not offered as a host: public Git services such as `github.com`,
 and any block that authenticates as the `git` account, accept SSH but serve only git —
 there is no login shell, so they cannot host a workspace. The list leaves them out and

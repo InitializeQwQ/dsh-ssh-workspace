@@ -185,15 +185,15 @@ check('the helper is declared in the factory scope beside the components, not at
 console.log('\n[wiring]')
 
 const backdrops = [...source.matchAll(/className: 'sshwsp-backdrop'[^\n]*/g)].map(match => match[0])
-check('all four dialog backdrops were found', backdrops.length === 4, `${backdrops.length} found`)
+check('all five dialog backdrops were found', backdrops.length === 5, `${backdrops.length} found`)
 check('no backdrop still dismisses on a raw onClick',
   backdrops.every(line => !/onClick/.test(line)),
   backdrops.filter(line => /onClick/.test(line)).join(' | '))
 check('every backdrop spreads backdropDismiss',
-  backdrops.length === 4 && backdrops.every(line => line.includes('...backdropDismiss(')),
+  backdrops.length === 5 && backdrops.every(line => line.includes('...backdropDismiss(')),
   backdrops.join(' | '))
 check('the helper is wired at every floating surface',
-  (source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length === 5,
+  (source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length === 6,
   `${(source.match(/\.\.\.backdropDismiss\(/gu) ?? []).length} call(s)`)
 
 console.log('\n[wiring: each dialog keeps its own busy guard]')
@@ -231,7 +231,7 @@ function guardOf (componentName) {
     'the browse-only dialog still intercepts Escape for a selection it does not have')
   check('DirectoryBrowser spreads that guarded callback',
     browser.includes('...backdropDismiss(dismissBackdrop)'))
-  // The queue popover is the fifth backdropDismiss site: it is anchored to a
+  // The queue popover is another backdropDismiss site: it is anchored to a
   // button rather than centred, but it is dismissed by the same rule — press
   // AND release outside — so it must not grow a second implementation.
   check('the transfer popover uses the same outside-click rule',
