@@ -702,6 +702,8 @@ console.log('[the dialogs]')
       importedAliases: ['other', 'offline'],
       hosts: [
         { alias: 'discovered-only', source: 'ssh-config' },
+        // `enabled` is the retired per-host workspace flag: a leftover key in
+        // the listing must not filter anything out any more.
         { alias: 'box', source: 'store', enabled: true },
         { alias: 'other', source: 'ssh-config' },
         { alias: 'box2', source: 'store', enabled: false },
@@ -724,9 +726,9 @@ console.log('[the dialogs]')
   check('...with creation allowed on a writable directory',
     dialog.mountButton()?.props.disabled === false, String(dialog.mountButton()?.props.disabled))
   const options = (dialog.find((node) => node.type === 'select')?.props.children ?? []).map(option => option.props.value)
-  check('the host picker offers only added, connected hosts that allow new workspaces',
-    options.join() === 'box,other', options.join())
-  check('opening the picker does not dial an unadded or disabled host',
+  check('the host picker offers added, connected hosts (no separate enable flag)',
+    options.join() === 'box,other,box2', options.join())
+  check('opening the picker does not dial an unadded host',
     dialog.requests.length === 1 && new URL(dialog.requests[0], 'http://localhost').searchParams.get('alias') === 'box',
     dialog.requests.join())
 

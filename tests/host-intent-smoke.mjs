@@ -150,6 +150,50 @@ console.log('[1] the store section round-trips and follows its host')
 }
 
 {
+  // "Add a server" means "I want to use this server": the entry and the
+  // switch-on intent leave in ONE document write, so there is no window (and no
+  // half-state when the second write fails) in which the host is listed but the
+  // next start will not bring it back.
+  const { file, store } = makeStore()
+  store.create(
+    { alias: 'fresh', host: 'fresh.example', port: 22, user: 'u', auth: { kind: 'agent' } },
+    { autoConnect: true },
+  )
+  const written = readDocument(file)
+  check('adding a host switches it on in the same write',
+    store.autoConnectHosts().join(',') === 'fresh' && written.autoConnect.join(',') === 'fresh',
+    JSON.stringify(written.autoConnect))
+  check('...and stores the entry beside it',
+    written.hosts.length === 1 && written.hosts[0].alias === 'fresh', JSON.stringify(written.hosts))
+
+  // The option is opt-in: the store must not infer an intent on its own (an
+  // import or a test fixture is not a user click on the switch).
+  store.create({ alias: 'quiet', host: 'quiet.example', port: 22, user: 'u', auth: { kind: 'agent' } })
+  check('a create that does not ask for it writes no intent',
+    store.autoConnectHosts().join(',') === 'fresh', JSON.stringify(store.autoConnectHosts()))
+
+  store.create(
+    { alias: 'fresh2', host: 'fresh2.example', port: 22, user: 'u', auth: { kind: 'agent' } },
+    { autoConnect: true },
+  )
+  check('a second added host is appended, not duplicated or replaced',
+    store.autoConnectHosts().join(',') === 'fresh,fresh2', JSON.stringify(store.autoConnectHosts()))
+
+  // A rejected create must not leave an intent behind: the alias would point at
+  // a host that does not exist, and the restore pass would report it forever.
+  let refused
+  try {
+    store.create(
+      { alias: 'fresh', host: 'other.example', port: 22, user: 'u', auth: { kind: 'agent' } },
+      { autoConnect: true },
+    )
+  } catch (error) { refused = error }
+  check('a rejected add writes no intent',
+    refused?.code === 'STORE_CONFLICT' && store.autoConnectHosts().join(',') === 'fresh,fresh2',
+    `${String(refused)} ${JSON.stringify(store.autoConnectHosts())}`)
+}
+
+{
   const { store } = makeStore()
   writeFileSync(store.path, '{ not json')
   check('an unreadable store degrades to nothing to restore instead of throwing',
@@ -216,6 +260,22 @@ console.log('\n[2] a keep-alive host survives the idle sweep and stays wanted')
   engine.forget('unwanted')
   check('forgetting a host nobody asked for does not arm anything',
     engine.reconnector.stateOf('unwanted') === undefined, JSON.stringify(engine.reconnector.stateOf('unwanted')))
+
+  // A failed connect is a STATE the panel has to be able to render: a fatal
+  // failure arms no retry row, so without this map a card could only say
+  // "not connected" — which reads as "never tried".
+  let connectError
+  try { await engine.acquire('ghost') } catch (error) { connectError = error }
+  check('a failed connect is remembered as that host\'s state',
+    connectError !== undefined && engine.failures.get('ghost') === 'the store must not be consulted by this check',
+    JSON.stringify([...engine.failures]))
+  engine.failures.set('alive', 'a failure from before the socket came up')
+  engine.pool.set('alive', idle('alive'))
+  await engine.acquire('alive')
+  check('a live connection clears the remembered failure', engine.failures.has('alive') === false)
+  engine.failures.set('ghost', 'a failure from before the disconnect')
+  engine.forget('ghost')
+  check('forget (a disconnect or a config edit) clears it too', engine.failures.has('ghost') === false)
 }
 
 // ========================================================== [3] startup restore
@@ -322,6 +382,65 @@ console.log('\n[3] restore is serial, single-flight, and never throws')
   const outcome = await first
   check('the in-flight pass still completes every host',
     outcome.connected === 2 && calls.join(',') === 'a,b', JSON.stringify({ calls, outcome }))
+}
+
+{
+  // The panel asks `/status` what is connecting right now, and the answer is
+  // the pass's own pending list: a slow first host leaves the hosts queued
+  // behind it visible as "connecting" instead of looking switched off.
+  const { store } = makeStore()
+  store.setHostAutoConnect('slow', true)
+  store.setHostAutoConnect('queued', true)
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  const seen = []
+  const engine = {
+    async acquire (alias) {
+      seen.push([alias, intent.pendingAliases()])
+      if (alias === 'slow') await gate
+      return { alias }
+    },
+  }
+  const intent = new HostIntent({ store, engine })
+  const running = intent.restore()
+  check('every switched-on host is pending when the pass starts',
+    intent.pendingAliases().join(',') === 'slow,queued', JSON.stringify(intent.pendingAliases()))
+  release()
+  const outcome = await running
+  check('...and each alias leaves the pending list once it settles',
+    seen.length === 2 && seen[1][1].join(',') === 'queued' && intent.pendingAliases().length === 0,
+    JSON.stringify({ seen, pending: intent.pendingAliases() }))
+  check('the pass still connects both', outcome.connected === 2, JSON.stringify(outcome))
+}
+
+{
+  // The user can switch a host off while a slow earlier attempt is running. The
+  // list was captured when the pass began, so the pass has to re-read the intent
+  // before each dial — otherwise it would connect a host the user just cleared.
+  const { store } = makeStore()
+  store.setHostAutoConnect('first', true)
+  store.setHostAutoConnect('cancelled', true)
+  store.setHostAutoConnect('third', true)
+  let release
+  const gate = new Promise(resolve => { release = resolve })
+  const calls = []
+  const engine = {
+    async acquire (alias) {
+      calls.push(alias)
+      if (alias === 'first') await gate
+      return { alias }
+    },
+  }
+  const intent = new HostIntent({ store, engine })
+  const running = intent.restore()
+  store.setHostAutoConnect('cancelled', false)
+  release()
+  const outcome = await running
+  check('a host switched off mid-pass is not dialed',
+    calls.join(',') === 'first,third', JSON.stringify(calls))
+  check('...and is reported as neither connected nor failed',
+    outcome.connected === 2 && outcome.failed.length === 0, JSON.stringify(outcome))
+  check('...and is not left in the pending list', intent.pendingAliases().length === 0)
 }
 
 {
@@ -473,6 +592,30 @@ if (makeRoutes === undefined) {
   }
 
   {
+    // A connect may be in flight when the user flips the switch off (the
+    // activation restore, or their own click). The route has to wait for it —
+    // that attempt completing a moment later would leave the host connected
+    // again and undo the click.
+    store.setHostAutoConnect('in-flight', true)
+    let settle
+    const attempt = new Promise(resolve => { settle = resolve })
+    engine.acquiring = new Map([['in-flight', attempt]])
+    const { res, state } = fakeRes()
+    const request = routeOf(routes, ROUTES.hostDisconnect).handler(fakeReq({ body: { alias: 'in-flight' } }), res)
+    await new Promise(resolve => setImmediate(resolve))
+    check('the disconnect waits for the in-flight connect instead of racing it',
+      state.status === undefined, state.body)
+    // The attempt completes: the pool gains the record the route must then close.
+    pool.set('in-flight', { alias: 'in-flight', inFlight: 0, holds: 0, idleAt: Date.now(), broken: false, client: { end () {} } })
+    settle({ alias: 'in-flight' })
+    await request
+    check('...then closes the connection that attempt just built',
+      JSON.parse(state.body).disconnected === true && pool.has('in-flight') === false &&
+      store.autoConnectHosts().includes('in-flight') === false, state.body)
+    engine.acquiring.delete('in-flight')
+  }
+
+  {
     // Not connected, but switched on (a host that never came up). The switch
     // going off must still remove it from the restore list.
     store.setHostAutoConnect('never-up', true)
@@ -491,6 +634,167 @@ if (makeRoutes === undefined) {
     await routeOf(routes, ROUTES.hostImport).handler(fakeReq({ body: { alias: 'imported', imported: false } }), res)
     check('removing an import answers ok', state.status === 200 && JSON.parse(state.body).ok === true, state.body)
     check('removing an import clears its intent', store.autoConnectHosts().includes('imported') === false, JSON.stringify(store.autoConnectHosts()))
+  }
+
+  {
+    // Saving a NEW host is also switching it on: the route creates the entry
+    // with the intent (one document write) and dials it without holding the
+    // reply for the handshake.
+    const added = makeStore()
+    const dialed = []
+    const events = []
+    const addEngine = {
+      pool: new Map(),
+      store: {
+        entryStore: added.store,
+        listing: () => ({ rows: [], skipped: [] }),
+        sshConfigAliases: () => [],
+      },
+      async acquire (alias) {
+        dialed.push(alias)
+        return { alias, holds: 0, inFlight: 0, idleAt: Date.now(), broken: false }
+      },
+      isKeepAlive (alias) { return added.store.autoConnectHosts().includes(alias) },
+      forget () {},
+      diagnostics: { record (kind, message) { events.push({ kind, message }) } },
+    }
+    const addRoutes = makeRoutes({
+      engine: addEngine,
+      router: { listRoots: () => [], listDisabled: () => [], assertEnabled () {} },
+      forwards: { list: () => [], closeForAlias: () => 0 },
+      shells: { list: () => [] },
+      ctx: { get: () => undefined },
+    })
+    const save = async (body) => {
+      const { res, state } = fakeRes()
+      await routeOf(addRoutes, ROUTES.hostSave).handler(fakeReq({ body, method: 'POST' }), res)
+      return { status: state.status, body: state.body === '' ? undefined : JSON.parse(state.body) }
+    }
+    const host = { alias: 'added', host: 'added.example', port: 22, user: 'u', auth: { kind: 'agent' } }
+
+    const created = await save(host)
+    check('adding a host answers created and switched on',
+      created.status === 200 && created.body.created === true && created.body.autoConnect === true,
+      `${created.status} ${JSON.stringify(created.body)}`)
+    check('adding a host records the connection intent',
+      added.store.autoConnectHosts().join(',') === 'added', JSON.stringify(added.store.autoConnectHosts()))
+    await new Promise(resolve => setImmediate(resolve))
+    check('adding a host dials it without the reply waiting for the handshake',
+      dialed.join(',') === 'added', JSON.stringify(dialed))
+
+    const edited = await save({ ...host, originalAlias: 'added', host: 'moved.example' })
+    await new Promise(resolve => setImmediate(resolve))
+    check('an edit answers created:false', edited.status === 200 && edited.body.created === false, JSON.stringify(edited.body))
+    check('an edit does not dial the host again',
+      dialed.join(',') === 'added', JSON.stringify(dialed))
+
+    // The switch belongs to the user: renaming a host or editing a description
+    // on one they deliberately switched off must not quietly turn it on.
+    added.store.setHostAutoConnect('added', false)
+    await save({ ...host, originalAlias: 'added', description: 'switched off on purpose' })
+    check('editing a switched-off host leaves it switched off',
+      !added.store.autoConnectHosts().includes('added'), JSON.stringify(added.store.autoConnectHosts()))
+
+    // A rejected add must not leave an intent pointing at a host that does not
+    // exist — the restore pass would report it on every start.
+    const duplicate = await save({ ...host, host: 'other.example' })
+    check('a rejected add writes no intent',
+      duplicate.status === 409 && added.store.autoConnectHosts().length === 0,
+      `${duplicate.status} ${JSON.stringify(added.store.autoConnectHosts())}`)
+
+    // The automatic dial is fire-and-forget, so its failure has to land
+    // somewhere a user can read: the diagnostics ring is that place.
+    addEngine.acquire = async () => { throw Object.assign(new Error('host key refused'), { fatal: true }) }
+    const failing = await save({ ...host, alias: 'unreachable' })
+    await new Promise(resolve => setImmediate(resolve))
+    check('an added host that cannot be dialed is recorded, not lost',
+      failing.status === 200 && events.some(event =>
+        event.kind === 'degraded' && event.message.includes('unreachable') && event.message.includes('host key refused')),
+      JSON.stringify(events))
+    check('...and it stays switched on for the next start',
+      added.store.autoConnectHosts().includes('unreachable'), JSON.stringify(added.store.autoConnectHosts()))
+  }
+
+  {
+    // The panel's primary "add" path picks a host out of ~/.ssh/config. It is
+    // the same request as a manual add: membership and the switch-on intent are
+    // one write, and the host is dialed right away.
+    const imported = makeStore()
+    const dialed = []
+    const importEngine = {
+      pool: new Map(),
+      store: {
+        entryStore: imported.store,
+        listing: () => ({ rows: [{ alias: 'cfg-host', source: 'ssh-config' }], skipped: [] }),
+        sshConfigAliases: () => ['cfg-host'],
+      },
+      async acquire (alias) { dialed.push(alias) },
+      forget () {},
+      isKeepAlive (alias) { return imported.store.autoConnectHosts().includes(alias) },
+    }
+    const importRoutes = makeRoutes({
+      engine: importEngine,
+      router: { listRoots: () => [], listDisabled: () => [], assertEnabled () {} },
+      forwards: { list: () => [], closeForAlias: () => 0 },
+      shells: { list: () => [] },
+      ctx: { get: () => undefined },
+    })
+    const callImport = async (importedFlag) => {
+      const { res, state } = fakeRes()
+      await routeOf(importRoutes, ROUTES.hostImport).handler(fakeReq({ body: { alias: 'cfg-host', imported: importedFlag } }), res)
+      return { status: state.status, body: state.body === '' ? undefined : JSON.parse(state.body) }
+    }
+
+    const reply = await callImport(true)
+    check('adding an SSH config host answers switched on',
+      reply.status === 200 && reply.body.autoConnect === true, `${reply.status} ${JSON.stringify(reply.body)}`)
+    check('...records the membership and the intent in one write',
+      imported.store.sshConfigImports().join(',') === 'cfg-host' &&
+      readDocument(imported.file).autoConnect.join(',') === 'cfg-host',
+      JSON.stringify(readDocument(imported.file)))
+    await new Promise(resolve => setImmediate(resolve))
+    check('...and dials it right away', dialed.join(',') === 'cfg-host', JSON.stringify(dialed))
+
+    // Removing it is the opposite statement: the row disappears, and an intent
+    // without a row would dial a host the user just took off the list.
+    await callImport(false)
+    check('removing the import clears both halves',
+      imported.store.sshConfigImports().length === 0 && imported.store.autoConnectHosts().length === 0,
+      JSON.stringify(readDocument(imported.file)))
+  }
+
+  {
+    // `/status` carries the stored intent and what is being dialed right now, so
+    // the panel can show a switched-on host as on/connecting from the first
+    // poll instead of "off" for the whole handshake — including the automatic
+    // connection a host gets when it is added, which is not part of the restore
+    // queue and only exists in the engine's in-flight map.
+    store.setHostAutoConnect('status-host', true)
+    engine.acquiring = new Map([['in-flight-host', Promise.resolve()]])
+    engine.failures = new Map([['failed-host', 'host key refused']])
+    const statusRoutes = makeRoutes({
+      engine,
+      router: { listRoots: () => [], listDisabled: () => [], assertEnabled () {} },
+      forwards: { list: () => [], closeForAlias: () => 0 },
+      shells: { list: () => [] },
+      hostIntent: { pendingAliases: () => ['status-host'] },
+      ctx: { get: () => undefined },
+    })
+    const { res, state } = fakeRes()
+    await routeOf(statusRoutes, ROUTES.status).handler(fakeReq({ method: 'GET', url: ROUTES.status }), res)
+    const body = JSON.parse(state.body)
+    check('status ships the stored auto-connect intent',
+      (body.autoConnect ?? []).includes('status-host'), JSON.stringify(body.autoConnect))
+    check('status ships what the restore is still dialing',
+      (body.connecting ?? []).includes('status-host'), JSON.stringify(body.connecting))
+    check('status also ships a connection attempt that is in flight',
+      (body.connecting ?? []).includes('in-flight-host'), JSON.stringify(body.connecting))
+    check('status ships the last connection failure of a host',
+      (body.failures ?? []).some(row => row.alias === 'failed-host' && row.error === 'host key refused'),
+      JSON.stringify(body.failures))
+    engine.acquiring.delete('in-flight-host')
+    delete engine.failures
+    store.setHostAutoConnect('status-host', false)
   }
 
   {

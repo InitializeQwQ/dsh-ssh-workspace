@@ -23,7 +23,7 @@ const menu = Symbol('HostActionMenu')
 const dialog = Symbol('HostActionDialog')
 const details = Symbol('HostDetailsDialog')
 
-function render (conn, { host, expanded = false, action = null } = {}) {
+function render (conn, { host, expanded = false, action = null, autoConnect, connecting, failure } = {}) {
   const calls = []
   const states = [expanded, action]
   const React = {
@@ -38,6 +38,9 @@ function render (conn, { host, expanded = false, action = null } = {}) {
     React, jsx, jsx, Symbol('Fragment'), icon, icon, icon, icon, icon, icon, menu, dialog, details)
   const row = card({
     conn,
+    autoConnect,
+    connecting,
+    failure,
     host: { alias: 'alpha', user: 'deploy', host: 'example.test', port: 2222, auth: 'agent', source: 'store', ...host },
     t: key => key,
     onDisconnect: alias => calls.push(['disconnect', alias]),
@@ -45,7 +48,6 @@ function render (conn, { host, expanded = false, action = null } = {}) {
     onBrowse: alias => calls.push(['browse', alias]),
     onEdit: host => calls.push(['edit', host.alias]),
     onDelete: async row => { calls.push(['delete', row.alias, row.source]); return true },
-    onToggle: alias => calls.push(['toggle-workspace', alias]),
   })
   return { row, calls }
 }
@@ -90,28 +92,121 @@ check('a connection with work in flight cannot be disconnected and explains why'
   button(busy.row, 'connection').disabled && button(busy.row, 'connection').title === 'hosts.disconnectBusy' &&
   hasText(busy.row, 'connections.inFlight'))
 
+// A host the user has NOT enabled reports the plain fact, whatever it remembers:
+// no red dot, no "connection failed", no leftover retry countdown. The switch is
+// the statement "this host should be connected", and an off host is simply not.
 const broken = render({ state: 'broken' })
-check('a broken connection displays an error dot and offers connection on the switch',
-  hasText(broken.row, 'connections.broken') && hasDot(broken.row, 'err') && button(broken.row, 'connection').title === 'hosts.connect')
-for (const [phase, label] of [['waiting', 'reconnecting'], ['connecting', 'reconnectingNow'], ['gave-up', 'gaveUp']]) {
-  const retry = render({ state: 'broken', retry: { phase, attempts: 2, nextAt: Date.now() + 60000, lastError: 'failed to connect' } })
+check('a broken connection on a switched-off host reads as not connected',
+  hasText(broken.row, 'connections.idle') && hasDot(broken.row, 'idle') &&
+  button(broken.row, 'connection').title === 'hosts.connect' && !hasText(broken.row, 'connections.failed'))
+const disabledFailure = render(undefined, { failure: 'host key refused' })
+check('a remembered failure is hidden while the switch is off',
+  hasText(disabledFailure.row, 'connections.idle') && hasDot(disabledFailure.row, 'idle') &&
+  !hasText(disabledFailure.row, 'host key refused'))
+const disabledRetry = render(
+  { state: 'broken', retry: { phase: 'waiting', attempts: 2, nextAt: Date.now() + 1000, lastError: 'failed to connect' } })
+check('a leftover retry is hidden too while the switch is off',
+  hasText(disabledRetry.row, 'connections.idle') && hasDot(disabledRetry.row, 'idle') &&
+  !hasText(disabledRetry.row, 'connections.reconnecting') && !hasText(disabledRetry.row, 'connections.failed'))
+
+// Enabled, a failure is its own state: red dot + "连接失败". The engine's
+// message is the only evidence of a fatal attempt (it arms no retry), so it
+// travels under the row.
+const brokenWanted = render({ state: 'broken' }, { autoConnect: true })
+check('an enabled host with a broken connection says the connection failed, with an error dot',
+  hasText(brokenWanted.row, 'connections.failed') && hasDot(brokenWanted.row, 'err') &&
+  button(brokenWanted.row, 'connection').title === 'hosts.disconnectAuto')
+const failedHost = render(undefined, { autoConnect: true, failure: 'host key refused' })
+check('a failed connection keeps the switch on and says it failed',
+  hasText(failedHost.row, 'connections.failed') && hasDot(failedHost.row, 'err') &&
+  button(failedHost.row, 'connection')['aria-checked'] === true)
+check('...and the engine message is shown under the row', hasText(failedHost.row, 'host key refused'))
+
+// A switched-off host that still has a retry row can be dialed by hand (that is
+// the only path to "retry now" from the card, since an enabled switch means
+// "disconnect").
+const offRetry = render({ state: 'broken', retry: { phase: 'waiting', attempts: 2, nextAt: Date.now() + 60000, lastError: 'failed to connect' } })
+check('a switched-off host with a leftover retry reads as not connected and still offers a manual retry',
+  hasText(offRetry.row, 'connections.idle') && hasDot(offRetry.row, 'idle') &&
+  button(offRetry.row, 'connection').title === 'connections.retry')
+await button(offRetry.row, 'connection').onClick()
+check('...and the switch asks for an immediate retry', offRetry.calls.some(call => call.join() === 'connect,alpha,true'))
+
+// A retrying ENABLED host has also failed — the countdown is what is being done
+// about it, so it renders beside the failure sentence instead of replacing it.
+for (const [phase, detail] of [['waiting', 'reconnecting'], ['connecting', 'reconnectingNow'], ['gave-up', null]]) {
+  const retry = render(
+    { state: 'broken', retry: { phase, attempts: 2, nextAt: Date.now() + 60000, lastError: 'failed to connect' } },
+    { autoConnect: true })
   const retrySwitch = button(retry.row, 'connection')
-  check(`a ${phase} retry is reported without claiming an active connection`,
-    hasText(retry.row, `connections.${label}`) && hasDot(retry.row, 'warn') && !retrySwitch['aria-checked'] &&
-    retrySwitch.title === 'connections.retry' && hasText(retry.row, 'failed to connect'))
-  await retrySwitch.onClick()
-  check(`a ${phase} retry can be requested immediately`, retry.calls.some(call => call.join() === 'connect,alpha,true'))
+  check(`an enabled host with a ${phase} retry is reported as a failed connection, not a live one`,
+    hasText(retry.row, 'connections.failed') && hasDot(retry.row, 'err') && retrySwitch['aria-checked'] === true &&
+    retrySwitch.title === 'hosts.disconnectAuto' && hasText(retry.row, 'failed to connect'))
+  check(`...with the ${phase} retry sentence ${detail === null ? 'suppressed once it gave up' : 'beside the failure'}`,
+    detail === null
+      ? !hasText(retry.row, 'connections.reconnecting') && !hasText(retry.row, 'connections.reconnectingNow')
+      : hasText(retry.row, `connections.${detail}`))
 }
 
-const actions = render(undefined, { expanded: true, host: { enabled: false } })
+// A switched-on host (the stored intent, see lib/host-intent.js) is shown ON
+// while the activation restore is still connecting it — the switch is the
+// desired state, and the status line is the actual one. Reading "off" for the
+// whole handshake after a restart is what made the setting look lost.
+const starting = render(undefined, { autoConnect: true, connecting: true })
+const startingSwitch = button(starting.row, 'connection')
+check('a switched-on host starts out on and says it is connecting',
+  startingSwitch['aria-checked'] === true && hasText(starting.row, 'connections.autoConnecting') &&
+  hasDot(starting.row, 'warn') && startingSwitch.title === 'hosts.disconnectAuto')
+await startingSwitch.onClick()
+check('switching it off while connecting asks for a disconnect (which clears the intent)',
+  starting.calls.some(call => call.join() === 'disconnect,alpha'))
+
+// The pending list belongs to the restore, not to a promise about a host the
+// user just switched off: without the intent the card must not claim to be
+// connecting (the pass may still be holding the alias for a moment).
+const switchedOffMidPass = render(undefined, { autoConnect: false, connecting: true })
+check('a host switched off mid-restore does not keep saying connecting',
+  !hasText(switchedOffMidPass.row, 'connections.autoConnecting') &&
+  button(switchedOffMidPass.row, 'connection')['aria-checked'] === false &&
+  hasText(switchedOffMidPass.row, 'connections.idle'))
+
+const startedLive = render({ state: 'connected', inFlight: 0 }, { autoConnect: true })
+check('a switched-on host that finished connecting reports connected and stays on',
+  button(startedLive.row, 'connection')['aria-checked'] === true && hasText(startedLive.row, 'connections.connected'))
+check('a live host that is not switched on still offers a plain disconnect',
+  button(live.row, 'connection').title === 'hosts.disconnect')
+
+const wantedRetry = render(
+  { state: 'broken', retry: { phase: 'waiting', attempts: 1, nextAt: Date.now() + 1000, lastError: 'failed to connect' } },
+  { autoConnect: true })
+check('a switched-on host that is retrying stays on and reports the retry',
+  button(wantedRetry.row, 'connection')['aria-checked'] === true &&
+  hasText(wantedRetry.row, 'connections.reconnecting') &&
+  button(wantedRetry.row, 'connection').title === 'hosts.disconnectAuto')
+await button(wantedRetry.row, 'connection').onClick()
+check('...and its switch turns the intent off instead of retrying',
+  wantedRetry.calls.some(call => call.join() === 'disconnect,alpha') &&
+  !wantedRetry.calls.some(call => call.join() === 'connect,alpha,true'))
+
+// The card can only show the intent if the panel actually feeds it; asserted on
+// the source because the call site is inside the page component, which this
+// suite does not render.
+check('the panel feeds the card the stored intent, the restore pending list and the failure',
+  /autoConnect: \(status\.autoConnect \?\? \[\]\)\.includes\(host\.alias\)/u.test(source) &&
+  /connecting: \(status\.connecting \?\? \[\]\)\.includes\(host\.alias\)/u.test(source) &&
+  /failure: failureMap\.get\(host\.alias\)/u.test(source) &&
+  /for \(const row of status\.failures \?\? \[\]\)/u.test(source))
+
+const actions = render(undefined, { expanded: true })
 check('the more button identifies its menu while open',
   button(actions.row, 'more')['aria-haspopup'] === 'menu' && button(actions.row, 'more')['aria-controls'] === menuOf(actions.row).id)
-check('existing stored hosts keep their management actions in the menu',
-  ['details', 'test', 'edit', 'delete', 'forget', 'toggle-workspace'].every(key => menuItem(actions.row, key)))
-const workspaceToggle = menuItem(actions.row, 'toggle-workspace')
-workspaceToggle.onClick()
-check('workspace eligibility is controlled separately inside the overflow',
-  workspaceToggle.label === 'hosts.allowWorkspace' && actions.calls.some(call => call.join() === 'toggle-workspace,alpha'))
+// ONE menu for every host type: the stored/manual host does not grow extra
+// entries. Editing lives in the details dialog's pencil, and there is no
+// separate "allow new workspaces" switch (the connection switch decides).
+check('a manually added host keeps exactly the four management actions',
+  ['details', 'test', 'forget', 'delete'].every(key => menuItem(actions.row, key)) &&
+  !menuItem(actions.row, 'edit') && !menuItem(actions.row, 'toggle-workspace') &&
+  menuOf(actions.row).rows.length === 4)
 menuItem(actions.row, 'details').onClick()
 check('host details open only after choosing that menu item',
   !detailsOf(actions.row) && actions.calls.some(call => call.join() === 'state,details'))
@@ -151,8 +246,11 @@ const config = { source: 'ssh-config' }
 const imported = render(undefined, { expanded: true, host: config })
 const configRow = imported.row
 check('an imported host can be connected and removed, with its source config read-only',
-  !button(configRow, 'connection').disabled && !menuItem(configRow, 'edit') && !menuItem(configRow, 'toggle-workspace') &&
+  !button(configRow, 'connection').disabled &&
   menuItem(configRow, 'delete').label === 'hosts.removeImport')
+check('a stored host and an imported host expose the same menu actions',
+  menuOf(configRow).rows.map(item => item.key).join() === menuOf(actions.row).rows.map(item => item.key).join(),
+  `${menuOf(actions.row).rows.map(item => item.key)} vs ${menuOf(configRow).rows.map(item => item.key)}`)
 menuItem(configRow, 'delete').onClick()
 check('choosing removal opens confirmation without removing the host',
   imported.calls.some(call => call.join() === 'state,delete') && !imported.calls.some(call => call[0] === 'delete'))
@@ -162,9 +260,21 @@ check('confirmed removal identifies the config reference instead of a stored hos
   hasText(confirming.row, 'hosts.removeImportDesc') && confirming.calls.some(call => call.join() === 'delete,alpha,ssh-config'))
 const stale = render(undefined, { expanded: true, host: { ...config, unavailable: true } }).row
 const staleDetails = renderDetails(detailsOf(render(undefined, { action: 'details', host: { ...config, unavailable: true } }).row))
-check('a stale import can be removed, with unavailable actions disabled',
-  hasText(stale, 'hosts.importMissing') && button(stale, 'connection').disabled && button(stale, 'browse').disabled &&
+const statusTitle = row => [...elements(row)].find(node => node.props.className === 'sshwsp-host-status')?.props.title
+check('a disabled stale import reads as not connected, with unavailable actions disabled',
+  hasText(stale, 'connections.idle') && hasDot(stale, 'idle') && statusTitle(stale) === 'hosts.importMissing' &&
+  button(stale, 'connection').disabled && button(stale, 'browse').disabled &&
   !menuItem(stale, 'test') && !!menuItem(stale, 'delete') && !button(staleDetails, 'edit'))
+// A host whose config vanished can still carry a stored intent. Turning it OFF
+// must stay possible (that is how the intent is dropped); turning it ON has
+// nowhere to dial, so only the on-direction is disabled.
+const staleWanted = render(undefined, { host: { ...config, unavailable: true }, autoConnect: true })
+check('a vanished host that is still switched on explains itself and can be switched off',
+  hasText(staleWanted.row, 'hosts.importMissing') && hasDot(staleWanted.row, 'err') &&
+  button(staleWanted.row, 'connection')['aria-checked'] === true &&
+  !button(staleWanted.row, 'connection').disabled)
+await button(staleWanted.row, 'connection').onClick()
+check('...and doing so is a disconnect request', staleWanted.calls.some(call => call.join() === 'disconnect,alpha'))
 
 function renderMenuAt (trigger) {
   const node = { style: {}, getBoundingClientRect: () => ({ width: 220, height: 130 }) }

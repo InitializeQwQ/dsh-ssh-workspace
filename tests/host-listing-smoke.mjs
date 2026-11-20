@@ -379,10 +379,12 @@ console.log('\n[10] a config edit is detectable without re-parsing')
   check('and it is stable', missing.configStamp() === missing.configStamp(), missing.configStamp())
 }
 
-console.log('\n[11] enabled is a listing field, and the store can flip it')
+console.log('\n[11] the retired `enabled` flag is tolerated and ignored')
 {
-  // The panel filters the workspace-creation picker by this flag. It has to
-  // reach the ROW: the client never reads the store file.
+  // The old per-host "allow new workspaces" flag is gone: the connection
+  // switch is the only enable control. An entry carrying `enabled: false` from
+  // an older store must still be listed and usable — silently hiding it forever
+  // (with no UI left to flip it back) would be the worst of both.
   const { store, dir } = storeWith({
     configText: 'Host gamma\n  HostName g.example\n',
     entries: [
@@ -392,36 +394,20 @@ console.log('\n[11] enabled is a listing field, and the store can flip it')
   })
   track(dir)
   const rows = store.listing().rows
-  check('a store entry without the flag is enabled',
-    rows.find(row => row.alias === 'alpha')?.enabled === true,
-    JSON.stringify(rows.find(row => row.alias === 'alpha')))
-  check('a store entry with enabled:false is disabled',
-    rows.find(row => row.alias === 'beta')?.enabled === false,
-    JSON.stringify(rows.find(row => row.alias === 'beta')))
-  check('an ssh-config host is always enabled (nowhere to store a flag)',
-    rows.find(row => row.alias === 'gamma')?.enabled === true,
+  check('a legacy enabled:false entry is still listed',
+    rows.some(row => row.alias === 'beta'), JSON.stringify(rows.map(row => row.alias)))
+  check('the listing no longer carries a per-host enabled flag',
+    rows.every(row => row.enabled === undefined), JSON.stringify(rows.map(row => [row.alias, row.enabled])))
+  check('an ssh-config host carries no flag either',
+    rows.find(row => row.alias === 'gamma')?.enabled === undefined,
     JSON.stringify(rows.find(row => row.alias === 'gamma')))
-}
-
-{
+  // Asserted against the REAL store class: the double above never had the
+  // method, so checking it here would prove nothing.
   const { HostConfigStore } = await import(pathToFileURL(path.join(pluginRoot, 'lib/store.js')).href)
-  const dir = mkdtempSync(path.join(tmpdir(), 'dsh-hosts-toggle-'))
-  track(dir)
-  const store = new HostConfigStore(path.join(dir, 'dsh-ssh.json'))
-  store.create({ alias: 'alpha', host: 'a.example', user: 'dev', auth: { kind: 'agent' } })
-  store.setEnabled('alpha', false)
-  check('setEnabled(false) persists a disabled entry',
-    store.load().find(entry => entry.alias === 'alpha')?.enabled === false,
-    JSON.stringify(store.load().find(entry => entry.alias === 'alpha')))
-  check('...and the other fields survive the flip',
-    store.load().find(entry => entry.alias === 'alpha')?.host === 'a.example')
-  store.setEnabled('alpha', true)
-  check('setEnabled(true) removes the field instead of writing true',
-    store.load().find(entry => entry.alias === 'alpha')?.enabled === undefined,
-    JSON.stringify(store.load().find(entry => entry.alias === 'alpha')))
-  let refused = false
-  try { store.setEnabled('nope', false) } catch { refused = true }
-  check('an alias outside the store is refused, never invented', refused)
+  const realDir = mkdtempSync(path.join(tmpdir(), 'dsh-hosts-no-toggle-'))
+  track(realDir)
+  const realStore = new HostConfigStore(path.join(realDir, 'dsh-ssh.json'))
+  check('the store no longer exposes the retired writer', typeof realStore.setEnabled === 'undefined')
 }
 
 for (const cleanup of cleanups) cleanup()

@@ -2025,9 +2025,13 @@ async function postChunk (route, body, chunks = []) {
     check('import succeeds and repeated requests are idempotent',
       (await change('imported', true)).status === 200 && (await change('imported', true)).status === 200)
     const saved = JSON.parse(readFileSync(storePath, 'utf8'))
-    check('import saves only the alias and leaves SSH config intact',
-      saved.sshConfigImports.join() === 'imported' && saved.hosts.length === 0 &&
-      saved.secrets === undefined && readFileSync(configPath, 'utf8') === config)
+    // Adding a host from SSH config is the same request as adding one by
+    // hand, so the membership write also switched it on (one document write)
+    // and the route dialed it right away.
+    check('import saves the alias and its switched-on intent, and leaves SSH config intact',
+      saved.sshConfigImports.join() === 'imported' && saved.autoConnect.join() === 'imported' &&
+      saved.hosts.length === 0 && saved.secrets === undefined &&
+      readFileSync(configPath, 'utf8') === config)
     check('membership survives a fresh store read and is returned to the client',
       new HostConfigStore(storePath).sshConfigImports().join() === 'imported' &&
       (await list()).data.importedAliases.join() === 'imported')
@@ -2035,7 +2039,7 @@ async function postChunk (route, body, chunks = []) {
     writeFileSync(configPath, updatedConfig)
     check('the connect action works without background retries and uses the updated SSH config',
       (await call(ROUTES.hostReconnect, { alias: 'imported' })).data.ok === true &&
-      connected.join() === 'new.example.test')
+      connected.at(-1) === 'new.example.test')
     const edit = {
       originalAlias: 'imported', fromSshConfig: true, alias: 'imported',
       host: 'edited.example.test', user: 'deploy', port: 2223, auth: { kind: 'password' },
@@ -2161,39 +2165,6 @@ async function postChunk (route, body, chunks = []) {
       check('...and a blank list is stored as an empty array, not omitted',
         Array.isArray(rows.find(row => row.alias === 'alpha')?.tags),
         JSON.stringify(rows.find(row => row.alias === 'alpha')?.tags))
-    }
-
-    // Enabling / disabling a host is its own one-boolean route: the save route
-    // needs a complete form, and a switch must not fail because a field the
-    // form never touched became required.
-    {
-      const toggle = async (body) => {
-        const { res, state } = fakeRes()
-        await findRoute(ROUTES.hostToggle).handler(fakeReq({
-          method: 'POST',
-          headers: { host: 'localhost:4074', 'content-type': 'application/json' },
-          body,
-        }), res)
-        return state
-      }
-      const off = await toggle({ alias: 'alpha', enabled: false })
-      check('a stored host can be switched off', off.status === 200 && JSON.parse(off.body).ok === true,
-        `${off.status} ${off.body}`)
-      check('...and the store records it as disabled',
-        contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')?.enabled === false,
-        JSON.stringify(contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')))
-      const on = await toggle({ alias: 'alpha', enabled: true })
-      check('...and switched back on, removing the field rather than writing true',
-        on.status === 200 &&
-          contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')?.enabled === undefined,
-        JSON.stringify(contractEngine.store.entryStore.load().find(row => row.alias === 'alpha')))
-      const missing = await toggle({ alias: 'nope', enabled: false })
-      check('an alias that is not in the store is refused, not silently created',
-        missing.status === 400, `${missing.status} ${missing.body}`)
-      const bad = await toggle({ alias: 'alpha', enabled: 'no' })
-      check('a non-boolean state is refused', bad.status === 400, `${bad.status} ${bad.body}`)
-      const noAlias = await toggle({ enabled: false })
-      check('a missing alias is refused', noAlias.status === 400, `${noAlias.status} ${noAlias.body}`)
     }
 
     // A transport failure is not the caller's fault: 502.
