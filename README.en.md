@@ -136,7 +136,7 @@ npm ci          # ssh2 is a direct dependency and does not arrive with a clone
 ```
 
 Then point the DSH profile at this checkout — the dependency name is still the package
-name `@shiqyka/dsh-ssh-workspace`; either `link:` this directory or `npm pack` and use
+name `@initializeqwq/dsh-ssh-workspace`; either `link:` this directory or `npm pack` and use
 `file:` — and restart the host. The exact steps are in
 [development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md).
 

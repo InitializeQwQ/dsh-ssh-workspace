@@ -108,6 +108,12 @@ if (typeof clientRel === 'string' && existsSync(path.join(packageRoot, clientRel
   check('the first line uses the __ModuleLoader__ convention', client.split('\n', 1)[0].includes('__ModuleLoader__'),
     client.split('\n', 1)[0].slice(0, 100))
   check('the bundle exports apply()', client.includes('exports.apply'), '(marker not found)')
+  // The module id is how the Host looks this bundle up, and it is the PACKAGE
+  // NAME — not a free label. A rename that misses this line leaves a plugin
+  // that installs, activates on the host, and paints nothing, with no error
+  // anywhere: the Host asks for a module id that never registered.
+  check('the module id is the package name',
+    client.includes(`id: '${pkg.name}'`), `expected id: '${pkg.name}'`)
 } else {
   check('the client bundle is non-empty', false, 'bundle missing')
   check('the first line uses the __ModuleLoader__ convention', false, 'bundle missing')

@@ -28,7 +28,7 @@
  * comes from the runner's own list; the assertion total is reported as a
  * separately stamped sample when a caller passes `--assertions N`.
  *
- * @module @shiqyka/dsh-ssh-workspace/scripts/doc-numbers
+ * @module @initializeqwq/dsh-ssh-workspace/scripts/doc-numbers
  */
 
 import fs from 'node:fs'

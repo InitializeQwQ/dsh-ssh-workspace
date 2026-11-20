@@ -25,7 +25,7 @@
  * best-effort deleted. That is the difference between "the test cleaned up" and
  * "the test deleted something it did not create".
  *
- * @module @shiqyka/dsh-ssh-workspace/tests/scratch
+ * @module @initializeqwq/dsh-ssh-workspace/tests/scratch
  */
 
 import { shellQuote } from '../lib/engine.js'

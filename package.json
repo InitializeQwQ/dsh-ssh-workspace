@@ -1,15 +1,15 @@
 {
-  "name": "@shiqyka/dsh-ssh-workspace",
-  "version": "0.3.7",
+  "name": "@initializeqwq/dsh-ssh-workspace",
+  "version": "0.3.8",
   "description": "Remote SSH workspaces for DSH: mount a directory on an SSH host as a DSH workspace with browser UI sidebar panel",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/siqyka/dsh-ssh-workspace.git"
+    "url": "git+https://github.com/InitializeQwQ/dsh-ssh-workspace.git"
   },
-  "homepage": "https://github.com/siqyka/dsh-ssh-workspace#readme",
+  "homepage": "https://github.com/InitializeQwQ/dsh-ssh-workspace#readme",
   "bugs": {
-    "url": "https://github.com/siqyka/dsh-ssh-workspace/issues"
+    "url": "https://github.com/InitializeQwQ/dsh-ssh-workspace/issues"
   },
   "engines": {
     "node": ">=20"

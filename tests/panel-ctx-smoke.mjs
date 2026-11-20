@@ -71,7 +71,7 @@ function sliceBetween (startMarker, endMarker, label) {
 
 // ---- the real `main` slot registration, driven ------------------------------
 
-const PANEL_ID = '@shiqyka/dsh-ssh-workspace'
+const PANEL_ID = '@initializeqwq/dsh-ssh-workspace'
 const registrationSource = sliceBetween(
   "      slots.inject('main', () => slots.register({",
   '}, RemoteWorkspacePage))',

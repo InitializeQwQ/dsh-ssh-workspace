@@ -2,6 +2,16 @@
 
 本文件记录 dsh-ssh-workspace 的版本变更。0.1.16 之前的版本为未公开的本地迭代，未收录。
 
+## [0.3.8] - 2026-11-20
+
+### 变更
+
+- **包名改为 `@initializeqwq/dsh-ssh-workspace`**（本 fork 自己的命名空间）：`package.json` 的 `name`、客户端模块的 `window.__ModuleLoader__.load({ id })`（必须与包名一致，否则宿主按包名取不到这个模块）、`cordis.patch.yml` 里插入的插件行，以及各模块的 `@module` 标识一并改名；`package.json` 的 `repository` / `homepage` / `bugs` 也指回本 fork。**升级注意**：DSH profile 的 `package.json` 里依赖键和 `dsh.profile.bundles` 名单要同步改成新包名后重装（`github:InitializeQwQ/dsh-ssh-workspace` 这个来源不变），否则宿主按旧名加载不到插件。插件自己的数据与包名无关——`$DSH_HOME/dsh-ssh.json` 里的主机、转发意图、直通设置，以及已有会话与 `ssh://` 工作区都不受影响。
+
+### 测试
+
+- `client-shape-smoke` 335 → 336：新增「客户端模块 id 必须等于包名」——宿主按包名取模块，id 漏改的插件能装上、宿主能激活，但界面什么都不画且不报错。
+
 ## [0.3.7] - 2026-11-20
 
 ### 新增

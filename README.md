@@ -126,7 +126,7 @@ cd dsh-ssh-workspace
 npm ci          # ssh2 是直接依赖，不随 clone 到位
 ```
 
-然后把 profile 指向本目录（依赖名仍是包名 `@shiqyka/dsh-ssh-workspace`，用 `link:`
+然后把 profile 指向本目录（依赖名仍是包名 `@initializeqwq/dsh-ssh-workspace`，用 `link:`
 指向本目录，或 `npm pack` 后写 `file:`），重启宿主即可。具体步骤见
 [development.md](https://github.com/InitializeQwQ/dsh-ssh-workspace/blob/main/docs/development.md)。
 
