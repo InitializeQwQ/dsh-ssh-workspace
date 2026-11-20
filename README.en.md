@@ -54,16 +54,27 @@ and a host management panel out of the box
 
 ## Contents
 
-- [Overview](#overview)
-- [Quick start](#quick-start)
-- [Host management](#host-management)
-- [Configuration](#configuration)
-- [Agent tools](#agent-tools)
-- [Capabilities](#capabilities)
-- [Limitations](#limitations)
-- [Implementation notes](#implementation-notes)
-- [Documentation index](#documentation-index)
-- [License](#license)
+- [dsh-ssh-workspace](#dsh-ssh-workspace)
+  - [Contents](#contents)
+  - [Overview](#overview)
+    - [The problem it solves](#the-problem-it-solves)
+  - [Quick start](#quick-start)
+    - [Using a source checkout](#using-a-source-checkout)
+  - [Host management](#host-management)
+  - [Configuration](#configuration)
+    - [Host-path passthrough (`localPassthrough`)](#host-path-passthrough-localpassthrough)
+    - [LAN deployments (`allowLan`)](#lan-deployments-allowlan)
+  - [Agent tools](#agent-tools)
+  - [Capabilities](#capabilities)
+    - [Remote files](#remote-files)
+    - [Remote execution](#remote-execution)
+    - [UI integration](#ui-integration)
+    - [Selection, rename and delete](#selection-rename-and-delete)
+    - [Connection model](#connection-model)
+  - [Limitations](#limitations)
+  - [Implementation notes](#implementation-notes)
+  - [Documentation index](#documentation-index)
+  - [License](#license)
 
 ## Overview
 
@@ -107,7 +118,7 @@ same error semantics.
 
 1. **Install**: open the official desktop client and go to the **Plugins** page under
    **Settings** (or the plugins entry in the left navigation bar);
-2. **Enter the source**: this plugin is **not published to npm**. Paste this repository's
+2. **Enter the source**: Since this repo is a fork, this plugin is **not published to npm**. Paste this repository's
    URL into the plugin manager's install field and install:
    `https://github.com/InitializeQwQ/dsh-ssh-workspace`
    (the plugin manager installs its dependencies such as `ssh2` for you; for hacking on
