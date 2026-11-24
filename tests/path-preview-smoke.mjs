@@ -75,6 +75,7 @@ function liftFunction (name) {
 const debounceMatch = /const PATH_PREVIEW_DEBOUNCE_MS = (\d+)/u.exec(source)
 if (debounceMatch === null) throw new Error('client.js no longer defines PATH_PREVIEW_DEBOUNCE_MS')
 const DEBOUNCE = Number(debounceMatch[1])
+const RemoteHostPicker = Symbol('RemoteHostPicker')
 
 const HELPERS = ['draftDirectoryTarget', 'directoryPath', 'directoryDraft', 'narrowDirectoryEntries', 'childDirectoryPath']
 const HOOK = liftFunction('usePathDraftPreview')
@@ -321,7 +322,7 @@ function makeDialog ({ name, props, hostListing, connections }) {
     BROWSE_LIST_LIMIT: 2000,
     FolderIcon: function FolderIcon () {},
     FileIcon: function FileIcon () {},
-    GlobeIcon: function GlobeIcon () {},
+    RemoteHostPicker,
     ArrowLeftIcon: function ArrowLeftIcon () {},
     CloseIcon: function CloseIcon () {},
     capabilityNotes: () => [],
@@ -725,7 +726,8 @@ console.log('[the dialogs]')
     dialog.rows().join() === 'Documents,projects', dialog.rows().join())
   check('...with creation allowed on a writable directory',
     dialog.mountButton()?.props.disabled === false, String(dialog.mountButton()?.props.disabled))
-  const options = (dialog.find((node) => node.type === 'select')?.props.children ?? []).map(option => option.props.value)
+  const picker = dialog.find((node) => node.type === RemoteHostPicker)
+  const options = picker.props.hosts.map(host => host.alias)
   check('the host picker offers added, connected hosts (no separate enable flag)',
     options.join() === 'box,other,box2', options.join())
   check('opening the picker does not dial an unadded host',
@@ -736,8 +738,7 @@ console.log('[the dialogs]')
   check('it narrows rows exactly like the browser dialog', dialog.rows().join() === 'projects', dialog.rows().join())
 
   dialog.setDraft('/home/me/projects')
-  const select = dialog.find((node) => node.type === 'select')
-  select.props.onChange({ target: { value: 'other' } })
+  picker.props.onChange('other')
   dialog.pump()
   check('switching host drops the previous host\'s path at once',
     dialog.input()?.props.value === '', String(dialog.input()?.props.value))
@@ -759,7 +760,7 @@ for (const [importedAliases, connections, hint] of [
   await dialog.settle()
   check(`the host picker explains ${hint} and disables host selection and creation`,
     dialog.texts().includes(hint) &&
-    dialog.find(node => node.type === 'select').props.disabled === true &&
+    dialog.find(node => node.type === RemoteHostPicker).props.disabled === true &&
     dialog.mountButton().props.disabled === true && dialog.requests.length === 0)
 }
 
