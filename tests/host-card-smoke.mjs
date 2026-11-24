@@ -122,9 +122,7 @@ check('a failed connection keeps the switch on and says it failed',
   button(failedHost.row, 'connection')['aria-checked'] === true)
 check('...and the engine message is shown under the row', hasText(failedHost.row, 'host key refused'))
 
-// A switched-off host that still has a retry row can be dialed by hand (that is
-// the only path to "retry now" from the card, since an enabled switch means
-// "disconnect").
+// A switched-off host that still has a retry row can be dialed with its switch.
 const offRetry = render({ state: 'broken', retry: { phase: 'waiting', attempts: 2, nextAt: Date.now() + 60000, lastError: 'failed to connect' } })
 check('a switched-off host with a leftover retry reads as not connected and still offers a manual retry',
   hasText(offRetry.row, 'connections.idle') && hasDot(offRetry.row, 'idle') &&
@@ -204,9 +202,16 @@ check('the more button identifies its menu while open',
 // entries. Editing lives in the details dialog's pencil, and there is no
 // separate "allow new workspaces" switch (the connection switch decides).
 check('a manually added host keeps exactly the four management actions',
-  ['details', 'test', 'forget', 'delete'].every(key => menuItem(actions.row, key)) &&
+  ['details', 'reconnect', 'forget', 'delete'].every(key => menuItem(actions.row, key)) &&
   !menuItem(actions.row, 'edit') && !menuItem(actions.row, 'toggle-workspace') &&
   menuOf(actions.row).rows.length === 4)
+const failedMenu = render(undefined, { expanded: true, autoConnect: true, failure: 'host key refused' })
+const reconnect = menuItem(failedMenu.row, 'reconnect')
+await reconnect.onClick()
+check('the menu reconnects an enabled host after a failed attempt',
+  reconnect.label === 'hosts.reconnect' && !reconnect.disabled &&
+  failedMenu.calls.some(call => call.join() === 'connect,alpha,true') &&
+  !failedMenu.calls.some(call => call[0] === 'disconnect'))
 menuItem(actions.row, 'details').onClick()
 check('host details open only after choosing that menu item',
   !detailsOf(actions.row) && actions.calls.some(call => call.join() === 'state,details'))
@@ -264,7 +269,7 @@ const statusTitle = row => [...elements(row)].find(node => node.props.className 
 check('a disabled stale import reads as not connected, with unavailable actions disabled',
   hasText(stale, 'connections.idle') && hasDot(stale, 'idle') && statusTitle(stale) === 'hosts.importMissing' &&
   button(stale, 'connection').disabled && button(stale, 'browse').disabled &&
-  !menuItem(stale, 'test') && !!menuItem(stale, 'delete') && !button(staleDetails, 'edit'))
+  !menuItem(stale, 'reconnect') && !!menuItem(stale, 'delete') && !button(staleDetails, 'edit'))
 // A host whose config vanished can still carry a stored intent. Turning it OFF
 // must stay possible (that is how the intent is dropped); turning it ON has
 // nowhere to dial, so only the on-direction is disabled.
